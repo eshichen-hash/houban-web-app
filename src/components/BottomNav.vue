@@ -1,19 +1,13 @@
 <script setup lang="ts">
-import { Compass, Plus, UserRound } from 'lucide-vue-next'
+import { primaryNavigationItems } from './primaryNavigation'
 
 defineProps<{ active: string }>()
-
-const items = [
-  { to: '/explore', key: 'explore', label: '探索', icon: Compass },
-  { to: '/create', key: 'create', label: '發起', icon: Plus },
-  { to: '/my', key: 'my', label: '我的', icon: UserRound },
-]
 </script>
 
 <template>
   <nav class="bottom-nav" aria-label="主要導覽">
     <RouterLink
-      v-for="item in items"
+      v-for="item in primaryNavigationItems"
       :key="item.key"
       :to="item.to"
       class="bottom-nav__item"

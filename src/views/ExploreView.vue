@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import EventCard from '@/components/EventCard.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import { useAppState } from '@/composables/useAppState'
+import { useHorizontalCarousel } from '@/composables/useHorizontalCarousel'
 import type { EventItem } from '@/data/events'
 
 const router = useRouter()
@@ -13,6 +14,9 @@ const filterOpen = shallowRef(false)
 const filterApplied = shallowRef(false)
 const statusMessage = shallowRef('')
 const recommendationTrack = useTemplateRef<HTMLDivElement>('recommendationTrack')
+const { canPrevious, canNext, move: moveCarousel } = useHorizontalCarousel(recommendationTrack, {
+  itemSelector: '.recommendation-slide',
+})
 
 const recommendedEvents = computed(() => {
   if (state.dateFilter === 'week') return events.value
@@ -25,20 +29,6 @@ const resultDateLabel = computed(() => {
   if (state.dateFilter === 'week') return '本週'
   return '今天'
 })
-
-function moveCarousel(direction: number) {
-  const track = recommendationTrack.value
-  if (!track) return
-  const slides = Array.from(track.querySelectorAll<HTMLElement>('.recommendation-slide'))
-  if (!slides.length) return
-  const currentIndex = slides.reduce((closest, slide, index) => {
-    const currentDistance = Math.abs(slides[closest].offsetLeft - track.scrollLeft)
-    const nextDistance = Math.abs(slide.offsetLeft - track.scrollLeft)
-    return nextDistance < currentDistance ? index : closest
-  }, 0)
-  const nextIndex = Math.max(0, Math.min(slides.length - 1, currentIndex + direction))
-  track.scrollTo({ left: slides[nextIndex].offsetLeft, behavior: 'smooth' })
-}
 
 function openEvent(event: EventItem) {
   router.push(`/activity/${event.id}`)
@@ -111,6 +101,7 @@ function applyInterest(value: typeof state.interest) {
           class="carousel-arrow carousel-arrow--previous"
           type="button"
           aria-label="查看上一張推薦活動"
+          :disabled="!canPrevious"
           @click="moveCarousel(-1)"
         >
           <ChevronLeft :size="24" aria-hidden="true" />
@@ -120,6 +111,7 @@ function applyInterest(value: typeof state.interest) {
           class="carousel-arrow carousel-arrow--next"
           type="button"
           aria-label="查看下一張推薦活動"
+          :disabled="!canNext"
           @click="moveCarousel(1)"
         >
           <ChevronRight :size="24" aria-hidden="true" />
