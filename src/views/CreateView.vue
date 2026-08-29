@@ -1,108 +1,54 @@
 <script setup lang="ts">
-import { CalendarDays, ChevronRight, Clock3, MapPin, Minus, Plus, Sparkles, UsersRound } from 'lucide-vue-next'
-import { computed, reactive, shallowRef, watch } from 'vue'
+import { ChevronDown, ChevronRight, Minus, Plus, Sparkles, UsersRound } from 'lucide-vue-next'
+import { computed, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AdvancedActivitySettings from '@/components/create/AdvancedActivitySettings.vue'
+import CreateScheduleSelector from '@/components/create/CreateScheduleSelector.vue'
+import EditableActivityName from '@/components/create/EditableActivityName.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
-import { activityTypes, parks, type Cost, type Difficulty, type EventType } from '@/data/events'
+import { activityTypes, type Difficulty } from '@/data/events'
 import { useAppState } from '@/composables/useAppState'
+import { useCreateEventDraft } from '@/composables/useCreateEventDraft'
 
 const router = useRouter()
 const { createEvent } = useAppState()
+const {
+  form,
+  parks,
+  todayIso,
+  tomorrowIso,
+  selectedPark,
+  dateLabel,
+  timeLabel,
+  generatedName,
+  generatedIntro,
+  displayName,
+  canCreate,
+  nameIsCustom,
+  updateName,
+  resetGeneratedName,
+  selectPark,
+  changeSpots,
+  normaliseSpots,
+  buildEventInput,
+} = useCreateEventDraft()
 
 const showAllTypes = shallowRef(false)
-const nameTouched = shallowRef(false)
+const guideOpen = shallowRef(false)
 const statusMessage = shallowRef('')
-const dateIndex = shallowRef(0)
-const timeIndex = shallowRef(0)
-const parkIndex = shallowRef(0)
-const meetingIndex = shallowRef(0)
-
-const dates = ['今天・8 月 27 日', '明天・8 月 28 日', '本週・8 月 31 日']
-const isoDates = ['2026-08-27', '2026-08-28', '2026-08-31']
-const times = ['上午 9:00', '上午 10:30', '下午 2:00']
-const meetings = ['公園入口', '大樹下長椅旁']
-
-const form = reactive({
-  type: '' as EventType | '',
-  name: '',
-  spots: 12,
-  difficulty: '輕鬆' as Difficulty,
-  cost: '免費' as Cost,
-  intro: '',
-})
 
 const visibleTypes = computed(() => showAllTypes.value ? activityTypes : activityTypes.slice(0, 6))
-const selectedPark = computed(() => parks[parkIndex.value])
-const dateLabel = computed(() => dates[dateIndex.value])
-const timeLabel = computed(() => times[timeIndex.value])
-const meetingLabel = computed(() => meetings[meetingIndex.value])
-const generatedName = computed(() => form.type ? `${selectedPark.value.name}・${form.type === '健走' ? '晨間健走' : `一起${form.type}`}` : '')
-const generatedIntro = computed(() => form.type ? `在${selectedPark.value.name}進行${form.difficulty}${form.type}，歡迎一起參加。` : '')
-const displayName = computed(() => form.name || generatedName.value)
-const canCreate = computed(() => Boolean(form.type && displayName.value))
 
 watch(() => form.type, () => {
-  if (!nameTouched.value) form.name = generatedName.value
   statusMessage.value = form.type ? `已選 ${form.type}` : '請選擇一種活動類型'
 })
-
-watch([selectedPark, () => form.type, () => form.difficulty], () => {
-  if (!nameTouched.value) form.name = generatedName.value
-})
-
-function setName(value: string) {
-  nameTouched.value = true
-  form.name = value
-}
-
-function cycleDate() {
-  dateIndex.value = (dateIndex.value + 1) % dates.length
-}
-
-function cycleTime() {
-  timeIndex.value = (timeIndex.value + 1) % times.length
-}
-
-function cyclePark() {
-  parkIndex.value = (parkIndex.value + 1) % parks.length
-  if (!nameTouched.value) form.name = generatedName.value
-}
-
-function cycleMeeting() {
-  meetingIndex.value = (meetingIndex.value + 1) % meetings.length
-}
-
-function changeSpots(delta: number) {
-  form.spots = Math.min(50, Math.max(3, form.spots + delta))
-}
-
-function normaliseSpots() {
-  form.spots = Math.min(50, Math.max(3, Number(form.spots) || 3))
-}
 
 function submit() {
   if (!canCreate.value) {
     statusMessage.value = '請先選擇一種活動類型'
     return
   }
-  const created = createEvent({
-    title: displayName.value,
-    type: form.type as EventType,
-    difficulty: form.difficulty,
-    dateKey: dateIndex.value === 0 ? 'today' : dateIndex.value === 1 ? 'tomorrow' : 'week',
-    isoDate: isoDates[dateIndex.value],
-    dateLabel: dateLabel.value,
-    time: timeLabel.value,
-    park: selectedPark.value,
-    spots: form.spots,
-    maxSpots: form.spots,
-    cost: form.cost,
-    audience: form.difficulty === '輕鬆' ? '可依需要休息' : '適合喜歡持續活動者',
-    description: form.intro || generatedIntro.value,
-    items: '飲用水、帽子（可選）',
-    image: '/create-bench-grass-v1.png',
-    imageAlt: '公園長椅與小草插圖',
-  })
+  const created = createEvent(buildEventInput())
   statusMessage.value = `示意：已建立「${created.title}」`
   router.push('/manage')
 }
@@ -119,10 +65,17 @@ function submit() {
       <div class="eyebrow">一起在公園相聚</div>
       <h1 id="create-title">快速建立活動</h1>
 
-      <section class="intro-card accordion-card">
+      <section class="intro-card accordion-card" :class="{ 'is-open': guideOpen }">
         <div class="intro-card__icon"><Sparkles :size="22" aria-hidden="true" /></div>
         <div><strong>把想做的事，變成一場公園邀請</strong><p>只要 3 步，就能邀請朋友參加。</p></div>
-        <button class="text-link intro-card__link" type="button">查看怎麼發起 <span aria-hidden="true">⌄</span></button>
+        <div v-show="guideOpen" id="create-guide-details" class="intro-card__details">
+          <ol>
+            <li><span>1</span>選擇想一起做的活動</li>
+            <li><span>2</span>確認公園、日期、時間與集合地點</li>
+            <li><span>3</span>設定名額、體力需求與參加提醒</li>
+          </ol>
+        </div>
+        <button class="text-link intro-card__link" type="button" aria-controls="create-guide-details" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">{{ guideOpen ? '收起說明' : '查看怎麼發起' }} <ChevronDown :size="18" aria-hidden="true" /></button>
       </section>
 
       <section class="form-section" aria-labelledby="step-one-title">
@@ -146,17 +99,29 @@ function submit() {
 
       <section class="form-section" aria-labelledby="step-two-title">
         <div class="step-heading"><div><div class="eyebrow">第二步</div><h2 id="step-two-title">安排行程</h2></div><span>日期、時間與地點</span></div>
-        <div class="schedule-grid">
-          <button class="schedule-field" type="button" aria-label="選擇日期" @click="cycleDate"><CalendarDays :size="22" aria-hidden="true" /><span><small>日期</small><strong>{{ dateLabel }}</strong></span><ChevronRight :size="19" aria-hidden="true" /></button>
-          <button class="schedule-field" type="button" aria-label="選擇時間" @click="cycleTime"><Clock3 :size="22" aria-hidden="true" /><span><small>時間</small><strong>{{ timeLabel }}</strong></span><ChevronRight :size="19" aria-hidden="true" /></button>
-          <button class="schedule-field schedule-field--wide" type="button" aria-label="選擇公園" @click="cyclePark"><MapPin :size="22" aria-hidden="true" /><span><small>公園</small><strong>{{ selectedPark.name }}</strong><em>{{ selectedPark.district }}</em></span><ChevronRight :size="19" aria-hidden="true" /></button>
-          <button class="schedule-field schedule-field--wide" type="button" aria-label="選擇集合地點" @click="cycleMeeting"><UsersRound :size="22" aria-hidden="true" /><span><small>集合地點</small><strong>{{ meetingLabel }}</strong></span><ChevronRight :size="19" aria-hidden="true" /></button>
-        </div>
-        <div class="name-field-group">
-          <div class="field-heading"><strong>活動名稱</strong><span>{{ form.type ? '依行程自動產生' : '尚待選擇活動' }}</span></div>
-          <input id="event-name" :value="displayName" type="text" aria-label="活動名稱" placeholder="選擇活動後自動產生" @input="setName(($event.target as HTMLInputElement).value)" />
-          <button v-if="form.type" class="button button--secondary name-edit" type="button" @click="nameTouched = true">編輯</button>
-        </div>
+        <CreateScheduleSelector
+          :iso-date="form.isoDate"
+          :time="form.time"
+          :park-id="form.parkId"
+          :meeting="form.meeting"
+          :parks="parks"
+          :today-iso="todayIso"
+          :tomorrow-iso="tomorrowIso"
+          :date-label="dateLabel"
+          :time-label="timeLabel"
+          @update:iso-date="form.isoDate = $event"
+          @update:time="form.time = $event"
+          @update:park-id="selectPark"
+          @update:meeting="form.meeting = $event"
+        />
+        <EditableActivityName
+          :model-value="form.name"
+          :auto-name="generatedName"
+          :disabled="!form.type"
+          :is-custom="nameIsCustom"
+          @update:model-value="updateName"
+          @reset="resetGeneratedName"
+        />
       </section>
 
       <section class="form-section" aria-labelledby="step-three-title">
@@ -188,12 +153,14 @@ function submit() {
         </div>
       </section>
 
+      <AdvancedActivitySettings v-model:audience="form.audience" v-model:items="form.items" v-model:image="form.image" />
+
       <section class="summary-card create-summary" aria-labelledby="create-summary-title">
         <h2 id="create-summary-title">活動摘要</h2>
         <strong>{{ displayName || '尚未選擇活動類型' }}</strong>
         <span>{{ dateLabel }}・{{ timeLabel }}</span>
-        <strong>{{ selectedPark.name }}</strong>
-        <span>{{ meetingLabel }}・{{ form.spots }} 人・{{ form.difficulty }}・{{ form.cost }}</span>
+        <strong>{{ selectedPark?.name }}</strong>
+        <span>{{ form.meeting }}・{{ form.spots }} 人・{{ form.difficulty }}・{{ form.cost }}</span>
       </section>
       <button class="button button--primary button--full create-submit" type="button" :disabled="!canCreate" @click="submit">建立活動 <span aria-hidden="true">→</span></button>
       <p class="create-note">確認摘要後直接建立，之後仍可在活動管理中編輯。</p>
