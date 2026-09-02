@@ -1,5 +1,6 @@
 import { computed, reactive, readonly, shallowRef, watch } from 'vue'
 import { activityTypes, eventSeed, parks, type DateFilter, type EventItem, type EventType } from '@/data/events'
+import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
 
 const STORAGE_KEY = 'park-good-companion-vue-state'
 interface StoredState {
@@ -9,11 +10,17 @@ interface StoredState {
   dateFilter: DateFilter
   interest: EventType | '全部'
   customDate: string | null
+  location: string
+  radius: ExploreRadius
+  locationMode: ExploreLocationMode
+  selectedParkId: string | null
 }
 
 const state = reactive({
   location: '大安區',
-  radius: 3,
+  radius: 3 as ExploreRadius,
+  locationMode: 'current' as ExploreLocationMode,
+  selectedParkId: null as string | null,
   dateFilter: 'today' as DateFilter,
   interest: '全部' as EventType | '全部',
   customDate: null as string | null,
@@ -33,6 +40,10 @@ function hydrateState() {
     if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
     if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
     if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
+    if (typeof stored.location === 'string' && stored.location.trim()) state.location = stored.location
+    if (stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10) state.radius = stored.radius
+    if (stored.locationMode === 'current' || stored.locationMode === 'district' || stored.locationMode === 'park') state.locationMode = stored.locationMode
+    if (typeof stored.selectedParkId === 'string' || stored.selectedParkId === null) state.selectedParkId = stored.selectedParkId
   } catch {
     // 本地資料損壞時回到乾淨的示意狀態，不阻擋使用者繼續操作。
   }
@@ -82,6 +93,13 @@ export function useAppState() {
     state.interest = value
   }
 
+  function setExploreScope(scope: ExploreScope) {
+    state.locationMode = scope.locationMode
+    state.location = scope.location
+    state.radius = scope.radius
+    state.selectedParkId = scope.locationMode === 'park' ? scope.selectedParkId : null
+  }
+
   function registerEvent(id: string) {
     if (!state.registered.includes(id)) state.registered.push(id)
   }
@@ -109,6 +127,7 @@ export function useAppState() {
     setDateFilter,
     setCustomDate,
     setInterest,
+    setExploreScope,
     registerEvent,
     createEvent,
   }
@@ -133,5 +152,9 @@ watch(state, (value) => {
     dateFilter: value.dateFilter,
     interest: value.interest,
     customDate: value.customDate,
+    location: value.location,
+    radius: value.radius,
+    locationMode: value.locationMode,
+    selectedParkId: value.selectedParkId,
   }))
 }, { deep: true })

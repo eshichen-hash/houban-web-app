@@ -1,34 +1,75 @@
 <script setup lang="ts">
-import { Bell, ChevronLeft, ChevronRight, MapPin } from 'lucide-vue-next'
-import { computed, shallowRef, useTemplateRef } from 'vue'
+import { computed, nextTick, shallowRef, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
-import EventCard from '@/components/EventCard.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
-import { useAppState } from '@/composables/useAppState'
-import { useHorizontalCarousel } from '@/composables/useHorizontalCarousel'
+import ExploreHeader from '@/components/explore/ExploreHeader.vue'
+import ExploreResults from '@/components/explore/ExploreResults.vue'
+import LocationScopeSheet from '@/components/explore/LocationScopeSheet.vue'
+import RecommendationCarousel from '@/components/explore/RecommendationCarousel.vue'
+import { useExploreDiscovery } from '@/composables/useExploreDiscovery'
 import type { EventItem } from '@/data/events'
+import type { ExploreFilters, ExploreScope } from '@/types/explore'
 
 const router = useRouter()
-const { events, visibleEvents, state, toggleFavorite, setDateFilter, setCustomDate, setInterest } = useAppState()
-const filterOpen = shallowRef(false)
-const filterApplied = shallowRef(false)
-const statusMessage = shallowRef('')
-const recommendationTrack = useTemplateRef<HTMLDivElement>('recommendationTrack')
-const { canPrevious, canNext, move: moveCarousel } = useHorizontalCarousel(recommendationTrack, {
-  itemSelector: '.recommendation-slide',
-})
+const {
+  state,
+  parks,
+  appliedScope,
+  scopeSummary,
+  filterSummary,
+  recommendedEvents,
+  filteredEvents,
+  visibleResults,
+  hasMoreResults,
+  countForScope,
+  countForFilters,
+  applyScope,
+  applyFilters,
+  showMoreResults,
+  toggleFavorite,
+} = useExploreDiscovery()
 
-const recommendedEvents = computed(() => {
-  if (state.dateFilter === 'week') return events.value
-  if (state.dateFilter === 'custom') return state.customDate ? events.value.filter((event) => event.isoDate === state.customDate) : []
-  return events.value.filter((event) => event.dateKey === state.dateFilter)
+const scopeOpen = shallowRef(false)
+const filterOpen = shallowRef(false)
+const statusMessage = shallowRef('')
+const scopePreview = shallowRef<ExploreScope>({ ...appliedScope.value })
+const filterPreview = shallowRef<ExploreFilters>({
+  dateFilter: state.dateFilter,
+  customDate: state.customDate,
+  interest: state.interest,
 })
-const resultDateLabel = computed(() => {
-  if (state.dateFilter === 'custom' && state.customDate) return state.customDate.replaceAll('-', '/')
-  if (state.dateFilter === 'tomorrow') return '明天'
-  if (state.dateFilter === 'week') return '本週'
-  return '今天'
-})
+const results = useTemplateRef<InstanceType<typeof ExploreResults>>('results')
+
+const scopePreviewCount = computed(() => countForScope(scopePreview.value))
+const filterPreviewCount = computed(() => countForFilters(filterPreview.value))
+
+function openScopeSettings() {
+  scopePreview.value = { ...appliedScope.value }
+  scopeOpen.value = true
+}
+
+function previewScope(scope: ExploreScope) {
+  scopePreview.value = scope
+}
+
+async function confirmScope(scope: ExploreScope) {
+  applyScope(scope)
+  scopeOpen.value = false
+  statusMessage.value = `已更新活動範圍，共找到 ${filteredEvents.value.length} 場活動`
+  await nextTick()
+  results.value?.focusHeading()
+}
+
+function previewFilters(filters: ExploreFilters) {
+  filterPreview.value = filters
+}
+
+async function confirmFilters(filters: ExploreFilters) {
+  applyFilters(filters)
+  statusMessage.value = `已套用篩選，共找到 ${countForFilters(filters)} 場活動`
+  await nextTick()
+  results.value?.focusHeading()
+}
 
 function openEvent(event: EventItem) {
   router.push(`/activity/${event.id}`)
@@ -36,128 +77,77 @@ function openEvent(event: EventItem) {
 
 async function shareEvent(event: EventItem) {
   statusMessage.value = `已準備分享「${event.title}」`
-  if ('share' in navigator) {
-    try {
-      await navigator.share({ title: event.title, text: `${event.title}｜${event.park.name}` })
-    } catch {
-      // User cancelled the native share sheet; keep the local feedback visible.
-    }
+  if (!('share' in navigator)) return
+  try {
+    await navigator.share({
+      title: event.title,
+      text: `${event.title}｜${event.park.name}`,
+      url: new URL(`/activity/${event.id}`, window.location.origin).toString(),
+    })
+  } catch {
+    // 使用者取消系統分享面板時，不顯示錯誤。
   }
 }
 
 function onFavorite(event: EventItem) {
   toggleFavorite(event.id)
-  statusMessage.value = state.favorites.includes(event.id) ? `已收藏「${event.title}」` : `已取消收藏「${event.title}」`
+  statusMessage.value = state.favorites.includes(event.id)
+    ? `已收藏「${event.title}」`
+    : `已取消收藏「${event.title}」`
 }
 
-function applyDateFilter(value: Exclude<typeof state.dateFilter, 'custom'>) {
-  filterApplied.value = true
-  setDateFilter(value)
-}
-
-function applyCustomDate(value: string) {
-  filterApplied.value = true
-  setCustomDate(value)
-}
-
-function applyInterest(value: typeof state.interest) {
-  filterApplied.value = true
-  setInterest(value)
+function showNotificationStatus() {
+  statusMessage.value = '目前沒有新的活動通知'
 }
 </script>
 
 <template>
-  <div class="page-view explore-view" id="main-content">
-    <header class="topbar topbar--glass">
-      <button class="location-button" type="button" aria-label="目前位置：大安區，活動範圍 3 公里內">
-        <span class="location-button__icon"><MapPin :size="22" aria-hidden="true" /></span>
-        <span><small>目前位置</small><strong>{{ state.location }}⌄</strong></span>
-        <span class="radius-chip"><i aria-hidden="true"></i>{{ state.radius }} 公里內</span>
-      </button>
-      <button class="icon-button" type="button" aria-label="通知"><Bell :size="23" aria-hidden="true" /></button>
-    </header>
+  <div id="main-content" class="page-view explore-view">
+    <ExploreHeader
+      :scope-summary="scopeSummary"
+      :radius="state.radius"
+      @open-scope="openScopeSettings"
+      @open-notifications="showNotificationStatus"
+    />
 
-    <main class="page-content explore-content" aria-labelledby="explore-title">
-      <div class="eyebrow">探索活動</div>
-      <h1 id="explore-title">今日推薦活動</h1>
-      <p class="page-intro">先看今天適合參加的活動。</p>
-
-      <section class="recommendation-carousel" aria-label="今日推薦活動">
-        <div v-if="recommendedEvents.length" id="recommendation-track" ref="recommendationTrack" class="recommendation-track" aria-label="推薦活動卡片，可左右滑動">
-          <div v-for="event in recommendedEvents" :key="event.id" class="recommendation-slide">
-            <EventCard
-              :event="event"
-              featured
-              :favorite="state.favorites.includes(event.id)"
-              @open="openEvent"
-              @share="shareEvent"
-              @toggle-favorite="onFavorite"
-            />
-          </div>
-        </div>
-        <div v-else class="empty-state"><h2>今天暫時沒有推薦活動</h2><p>可以展開篩選活動，換一天看看。</p></div>
-        <button
-          v-if="recommendedEvents.length > 1"
-          class="carousel-arrow carousel-arrow--previous"
-          type="button"
-          aria-label="查看上一張推薦活動"
-          :disabled="!canPrevious"
-          @click="moveCarousel(-1)"
-        >
-          <ChevronLeft :size="24" aria-hidden="true" />
-        </button>
-        <button
-          v-if="recommendedEvents.length > 1"
-          class="carousel-arrow carousel-arrow--next"
-          type="button"
-          aria-label="查看下一張推薦活動"
-          :disabled="!canNext"
-          @click="moveCarousel(1)"
-        >
-          <ChevronRight :size="24" aria-hidden="true" />
-        </button>
-      </section>
-
-      <RouterLink class="park-entry" to="/park/daan-forest">
-        <span class="park-entry__copy"><strong>從公園找活動</strong><span>選一個熟悉的公園開始</span></span>
-        <span class="park-entry__action">選擇公園 <ChevronRight :size="20" aria-hidden="true" /></span>
-      </RouterLink>
+    <main class="page-content explore-content">
+      <RecommendationCarousel
+        :events="recommendedEvents"
+        :favorites="state.favorites"
+        @open="openEvent"
+        @share="shareEvent"
+        @toggle-favorite="onFavorite"
+      />
 
       <FilterPanel
         v-model:open="filterOpen"
         :date-filter="state.dateFilter"
         :interest="state.interest"
         :custom-date="state.customDate"
-        @update:date-filter="applyDateFilter"
-        @update:custom-date="applyCustomDate"
-        @update:interest="applyInterest"
+        :result-count="filterPreviewCount"
+        @preview="previewFilters"
+        @apply="confirmFilters"
       />
 
-      <section v-if="filterApplied" class="result-section" aria-labelledby="result-title">
-        <div class="result-section__heading">
-          <div>
-            <div class="eyebrow">篩選結果</div>
-            <h2 id="result-title">找到 {{ visibleEvents.length }} 場活動</h2>
-          </div>
-          <span class="result-section__context">{{ state.interest }}・{{ resultDateLabel }}</span>
-        </div>
-        <div v-if="visibleEvents.length" class="result-list">
-          <EventCard
-            v-for="event in visibleEvents"
-            :key="event.id"
-            :event="event"
-            :favorite="state.favorites.includes(event.id)"
-            @open="openEvent"
-            @share="shareEvent"
-            @toggle-favorite="onFavorite"
-          />
-        </div>
-        <div v-else class="empty-state">
-          <h3>目前沒有符合條件的活動</h3>
-          <p>試試看換一天，或先選擇「全部」活動。</p>
-        </div>
-      </section>
+      <ExploreResults
+        ref="results"
+        :events="visibleResults"
+        :total-count="filteredEvents.length"
+        :filter-summary="filterSummary"
+        :has-more="hasMoreResults"
+        @show-more="showMoreResults"
+      />
     </main>
+
+    <LocationScopeSheet
+      :open="scopeOpen"
+      :scope="appliedScope"
+      :parks="parks"
+      :result-count="scopePreviewCount"
+      @close="scopeOpen = false"
+      @preview="previewScope"
+      @apply="confirmScope"
+    />
 
     <p class="sr-only" role="status" aria-live="polite">{{ statusMessage }}</p>
   </div>

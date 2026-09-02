@@ -4,6 +4,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedActivitySettings from '@/components/create/AdvancedActivitySettings.vue'
 import CreateScheduleSelector from '@/components/create/CreateScheduleSelector.vue'
+import EditableActivityIntro from '@/components/create/EditableActivityIntro.vue'
 import EditableActivityName from '@/components/create/EditableActivityName.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import { activityTypes, type Difficulty } from '@/data/events'
@@ -25,8 +26,11 @@ const {
   displayName,
   canCreate,
   nameIsCustom,
+  introIsCustom,
   updateName,
   resetGeneratedName,
+  updateIntro,
+  resetGeneratedIntro,
   selectPark,
   changeSpots,
   normaliseSpots,
@@ -102,6 +106,7 @@ function submit() {
         <CreateScheduleSelector
           :iso-date="form.isoDate"
           :time="form.time"
+          :end-time="form.endTime"
           :park-id="form.parkId"
           :meeting="form.meeting"
           :parks="parks"
@@ -111,6 +116,7 @@ function submit() {
           :time-label="timeLabel"
           @update:iso-date="form.isoDate = $event"
           @update:time="form.time = $event"
+          @update:end-time="form.endTime = $event"
           @update:park-id="selectPark"
           @update:meeting="form.meeting = $event"
         />
@@ -147,10 +153,14 @@ function submit() {
           <button type="button" :class="{ 'is-selected': form.cost === '付費' }" :aria-pressed="form.cost === '付費'" @click="form.cost = '付費'">付費</button>
         </div>
 
-        <div class="name-field-group name-field-group--intro">
-          <div class="field-heading"><strong>活動介紹</strong><span>{{ form.type ? '依選擇自動產生' : '尚待選擇活動' }}</span></div>
-          <textarea v-model="form.intro" rows="3" aria-label="活動介紹" :placeholder="generatedIntro || '選定活動類型後，系統會依目前行程自動產生活動介紹。'"></textarea>
-        </div>
+        <EditableActivityIntro
+          :model-value="form.intro"
+          :auto-intro="generatedIntro"
+          :disabled="!form.type"
+          :is-custom="introIsCustom"
+          @update:model-value="updateIntro"
+          @reset="resetGeneratedIntro"
+        />
       </section>
 
       <AdvancedActivitySettings v-model:audience="form.audience" v-model:items="form.items" v-model:image="form.image" />

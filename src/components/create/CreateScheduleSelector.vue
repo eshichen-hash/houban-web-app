@@ -8,6 +8,7 @@ type PickerName = 'date' | 'time' | 'park' | 'meeting'
 const props = defineProps<{
   isoDate: string
   time: string
+  endTime: string
   parkId: string
   meeting: string
   parks: Park[]
@@ -20,21 +21,21 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:isoDate': [value: string]
   'update:time': [value: string]
+  'update:endTime': [value: string]
   'update:parkId': [value: string]
   'update:meeting': [value: string]
 }>()
 
 const openPicker = shallowRef<PickerName | null>(null)
 const customDateOpen = shallowRef(false)
-const customTimeOpen = shallowRef(false)
 const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
 
 const selectedPark = computed(() => props.parks.find((park) => park.id === props.parkId) ?? props.parks[0])
 const timeOptions = [
-  { value: '09:00', label: '上午 9:00' },
-  { value: '10:30', label: '上午 10:30' },
-  { value: '14:00', label: '下午 2:00' },
+  { start: '09:00', end: '10:00', label: '上午 9:00' },
+  { start: '10:30', end: '11:30', label: '上午 10:30' },
+  { start: '14:00', end: '15:00', label: '下午 2:00' },
 ]
 const meetingOptions = computed(() => Array.from(new Set([
   selectedPark.value?.meeting,
@@ -52,10 +53,26 @@ function selectDate(value: string) {
   openPicker.value = null
 }
 
-function selectTime(value: string) {
-  emit('update:time', value)
-  customTimeOpen.value = false
+function addMinutesToTime(value: string, minutes: number) {
+  const [hour = '0', minute = '0'] = value.split(':')
+  const totalMinutes = Number(hour) * 60 + Number(minute) + minutes
+  const normalizedMinutes = totalMinutes % (24 * 60)
+  return `${String(Math.floor(normalizedMinutes / 60)).padStart(2, '0')}:${String(normalizedMinutes % 60).padStart(2, '0')}`
+}
+
+function selectPresetTime(start: string, end: string) {
+  emit('update:time', start)
+  emit('update:endTime', end)
   openPicker.value = null
+}
+
+function updateStartTime(value: string) {
+  emit('update:time', value)
+  if (props.endTime <= value) emit('update:endTime', addMinutesToTime(value, 60))
+}
+
+function updateEndTime(value: string) {
+  emit('update:endTime', value > props.time ? value : addMinutesToTime(props.time, 60))
 }
 
 function selectPark(value: string) {
@@ -117,15 +134,34 @@ function saveCustomMeeting() {
       </label>
     </div>
 
-    <div v-show="openPicker === 'time'" id="create-time-picker" class="schedule-picker-panel" aria-label="選擇活動時間">
-      <div class="schedule-choice-grid">
-        <button v-for="option in timeOptions" :key="option.value" class="schedule-choice" :class="{ 'is-selected': time === option.value }" type="button" :aria-pressed="time === option.value" @click="selectTime(option.value)">{{ option.label }}</button>
-        <button class="schedule-choice" :class="{ 'is-selected': customTimeOpen }" type="button" :aria-pressed="customTimeOpen" @click="customTimeOpen = !customTimeOpen"><Clock3 :size="18" aria-hidden="true" />自訂時間</button>
+    <div v-show="openPicker === 'time'" id="create-time-picker" class="schedule-picker-panel" aria-label="選擇活動時間區間">
+      <div class="schedule-choice-grid schedule-choice-grid--time" aria-label="快速選擇開始時間">
+        <button
+          v-for="option in timeOptions"
+          :key="option.start"
+          class="schedule-choice"
+          :class="{ 'is-selected': time === option.start && endTime === option.end }"
+          type="button"
+          :aria-pressed="time === option.start && endTime === option.end"
+          @click="selectPresetTime(option.start, option.end)"
+        >
+          {{ option.label }}
+        </button>
       </div>
-      <label v-show="customTimeOpen" class="schedule-custom-field" for="create-custom-time">
-        <span>選擇開始時間</span>
-        <input id="create-custom-time" :value="time" type="time" @change="selectTime(($event.target as HTMLInputElement).value)" />
-      </label>
+      <fieldset class="schedule-time-range">
+        <legend>自訂活動時間</legend>
+        <div class="schedule-time-range__fields">
+          <label class="schedule-time-field" for="create-custom-start-time">
+            <span>活動開始</span>
+            <input id="create-custom-start-time" name="event-start-time" :value="time" type="time" autocomplete="off" @change="updateStartTime(($event.target as HTMLInputElement).value)" />
+          </label>
+          <span class="schedule-time-range__separator" aria-hidden="true">～</span>
+          <label class="schedule-time-field" for="create-custom-end-time">
+            <span>活動結束</span>
+            <input id="create-custom-end-time" name="event-end-time" :value="endTime" type="time" :min="time" autocomplete="off" @change="updateEndTime(($event.target as HTMLInputElement).value)" />
+          </label>
+        </div>
+      </fieldset>
     </div>
 
     <button

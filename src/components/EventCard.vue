@@ -6,7 +6,8 @@ const props = withDefaults(defineProps<{
   event: EventItem
   featured?: boolean
   favorite?: boolean
-}>(), { featured: false, favorite: false })
+  priority?: boolean
+}>(), { featured: false, favorite: false, priority: false })
 
 const emit = defineEmits<{
   open: [event: EventItem]
@@ -18,7 +19,14 @@ const emit = defineEmits<{
 <template>
   <article class="event-card" :class="{ 'event-card--featured': props.featured }">
     <div class="event-card__media">
-      <img :src="props.event.image" :alt="props.event.imageAlt" :loading="props.featured ? 'eager' : 'lazy'" />
+      <img
+        :src="props.event.image"
+        :alt="props.event.imageAlt"
+        :loading="props.priority ? 'eager' : 'lazy'"
+        :fetchpriority="props.priority ? 'high' : 'auto'"
+        width="1200"
+        height="675"
+      />
       <button
         class="icon-button event-card__favorite"
         type="button"

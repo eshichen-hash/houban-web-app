@@ -29,11 +29,20 @@ function formatTime(time: string) {
   return `${period} ${displayHour}:${minute}`
 }
 
+function formatTimeRange(startTime: string, endTime: string) {
+  const start = formatTime(startTime)
+  const end = formatTime(endTime)
+  const [startPeriod = ''] = start.split(' ')
+  const compactEnd = end.startsWith(`${startPeriod} `) ? end.slice(startPeriod.length + 1) : end
+  return `${start}－${compactEnd}`
+}
+
 export function useCreateEventDraft() {
   const today = new Date()
   const todayIso = toIsoDate(today)
   const tomorrowIso = toIsoDate(addDays(today, 1))
   const nameIsCustom = shallowRef(false)
+  const introIsCustom = shallowRef(false)
 
   const form = reactive({
     type: '' as EventType | '',
@@ -44,6 +53,7 @@ export function useCreateEventDraft() {
     intro: '',
     isoDate: todayIso,
     time: '09:00',
+    endTime: '10:00',
     parkId: parks[0]?.id ?? '',
     meeting: parks[0]?.meeting ?? '公園入口',
     audience: '',
@@ -58,7 +68,7 @@ export function useCreateEventDraft() {
     if (form.isoDate === tomorrowIso) return `明天・${date}`
     return date
   })
-  const timeLabel = computed(() => formatTime(form.time))
+  const timeLabel = computed(() => formatTimeRange(form.time, form.endTime))
   const generatedName = computed(() => {
     if (!form.type || !selectedPark.value) return ''
     const activityName = form.type === '健走' ? '晨間健走' : `一起${form.type}`
@@ -75,6 +85,10 @@ export function useCreateEventDraft() {
     if (!nameIsCustom.value) form.name = generatedName.value
   })
 
+  watch(generatedIntro, (value) => {
+    if (!introIsCustom.value) form.intro = value
+  }, { immediate: true })
+
   function updateName(value: string) {
     nameIsCustom.value = value.trim() !== generatedName.value.trim()
     form.name = value
@@ -83,6 +97,16 @@ export function useCreateEventDraft() {
   function resetGeneratedName() {
     nameIsCustom.value = false
     form.name = generatedName.value
+  }
+
+  function updateIntro(value: string) {
+    introIsCustom.value = value.trim() !== generatedIntro.value.trim()
+    form.intro = value
+  }
+
+  function resetGeneratedIntro() {
+    introIsCustom.value = false
+    form.intro = generatedIntro.value
   }
 
   function selectPark(parkId: string) {
@@ -143,8 +167,11 @@ export function useCreateEventDraft() {
     displayName,
     canCreate,
     nameIsCustom,
+    introIsCustom,
     updateName,
     resetGeneratedName,
+    updateIntro,
+    resetGeneratedIntro,
     selectPark,
     changeSpots,
     normaliseSpots,

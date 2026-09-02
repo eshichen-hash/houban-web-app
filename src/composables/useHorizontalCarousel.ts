@@ -1,5 +1,6 @@
 import {
   computed,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   readonly,
@@ -103,8 +104,11 @@ export function useHorizontalCarousel(
     scheduleSync()
   }
 
-  onMounted(() => attach(track.value))
-  watch(track, attach, { flush: 'post' })
+  onMounted(async () => {
+    await nextTick()
+    attach(track.value)
+  })
+  watch(track, attach, { flush: 'post', immediate: true })
 
   onBeforeUnmount(() => {
     detach()
