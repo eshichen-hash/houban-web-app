@@ -16,11 +16,17 @@ import { computed, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppState } from '@/composables/useAppState'
 import type { EventItem } from '@/data/events'
+import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const router = useRouter()
 const { state, registeredEvents } = useAppState()
 const toastMessage = ref('')
 const expandedNotificationId = ref<string | null>(null)
+
+function navigateToPark(event: EventItem) {
+  const p = event.park
+  openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
+}
 
 // 預設展開第一張最近的活動通知
 watchEffect(() => {
@@ -125,10 +131,10 @@ async function inviteFriends(event: EventItem) {
 
             <!-- 展開內容 -->
             <div v-if="expandedNotificationId === event.id" class="expandable-notification__body">
-              <div class="notification-detail-item">
+              <div class="notification-detail-item" style="cursor: pointer;" @click="navigateToPark(event)">
                 <MapPin :size="18" />
                 <div>
-                  <strong>集合地點與導航</strong>
+                  <strong>集合地點與導航 <small style="color: #0284c7; text-decoration: underline; font-weight: normal;">(點擊導航)</small></strong>
                   <p>{{ event.park.name }}・{{ event.park.meeting }}</p>
                   <p style="color: #2b5e40; font-weight: 800; margin-top: 2px;">
                     💡 建議提前 10 分鐘抵達集合點，發起人（{{ event.organizer.name }}）會在現場等候。

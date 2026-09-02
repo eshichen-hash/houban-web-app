@@ -6,11 +6,14 @@ import {
   Clock3,
   MapPin,
   MessageCircle,
+  Navigation,
   UsersRound,
 } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import GoogleMapView from '@/components/GoogleMapView.vue'
 import { useAppState } from '@/composables/useAppState'
+import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +24,12 @@ const isRegistered = computed(() => Boolean(event.value && state.registered.incl
 
 function goBack() {
   router.back()
+}
+
+function navigateToMeetingPoint() {
+  if (!event.value) return
+  const p = event.value.park
+  openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
 }
 
 async function share() {
@@ -69,7 +78,11 @@ async function share() {
 
         <div class="detail-facts">
           <div><CalendarDays :size="21" aria-hidden="true" /><strong>{{ event.dateLabel }}</strong><span>{{ event.time }}</span></div>
-          <div><MapPin :size="21" aria-hidden="true" /><strong>{{ event.park.name }}</strong><span>{{ event.park.meeting }}</span></div>
+          <div style="cursor: pointer;" @click="navigateToMeetingPoint">
+            <MapPin :size="21" aria-hidden="true" />
+            <strong>{{ event.park.name }}</strong>
+            <span>{{ event.park.meeting }} <small style="color: #0284c7; text-decoration: underline;">(導航)</small></span>
+          </div>
         </div>
 
         <section class="trust-card" aria-labelledby="trust-title">
@@ -96,7 +109,19 @@ async function share() {
           </dl>
         </section>
 
-        <aside class="reminder-note"><strong>集合提醒</strong><span>請提前 10 分鐘抵達，發起人會在集合地點等候。</span></aside>
+        <aside class="reminder-note">
+          <strong>集合提醒</strong>
+          <span>請提前 10 分鐘抵達，發起人會在集合地點等候。</span>
+        </aside>
+
+        <!-- Google 地圖與導航區塊 -->
+        <GoogleMapView
+          :destination-name="event.park.name"
+          :meeting-point="event.park.meeting"
+          :address="event.park.address"
+          :coordinates="event.park.lat && event.park.lng ? { lat: event.park.lat, lng: event.park.lng } : undefined"
+          height="220px"
+        />
       </article>
     </main>
 

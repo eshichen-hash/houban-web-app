@@ -30,6 +30,8 @@ export interface Park {
   district: string
   address: string
   meeting: string
+  lat?: number
+  lng?: number
 }
 
 export interface ActivityTypeDefinition {
@@ -93,28 +95,36 @@ export const parks: Park[] = [
     name: '大安森林公園',
     district: '台北市大安區',
     address: '台北市大安區新生南路二段 1 號',
-    meeting: '公園入口',
+    meeting: '捷運大安森林公園站 2 號出口旁廣場',
+    lat: 25.0331,
+    lng: 121.5354,
   },
   {
     id: 'zhongzheng',
     name: '中正紀念堂園區',
     district: '台北市中正區',
     address: '台北市中正區中山南路 21 號',
-    meeting: '露天音樂台右側草地',
+    meeting: '大孝門前廣場・露天音樂台',
+    lat: 25.0347,
+    lng: 121.5218,
   },
   {
     id: 'peace-228',
     name: '二二八和平紀念公園',
     district: '台北市中正區',
     address: '台北市中正區凱達格蘭大道 3 號',
-    meeting: '音樂台旁入口',
+    meeting: '二二八公園・音樂台旁入口',
+    lat: 25.0423,
+    lng: 121.5152,
   },
   {
     id: 'xiangshan',
     name: '象山公園',
     district: '台北市信義區',
     address: '台北市信義區信義路五段 150 巷',
-    meeting: '公園入口廣場',
+    meeting: '捷運象山站 2 號出口・公園入口廣場',
+    lat: 25.0308,
+    lng: 121.5701,
   },
 ]
 

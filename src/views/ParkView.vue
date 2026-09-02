@@ -3,6 +3,7 @@ import { ArrowLeft, Bell, CalendarDays, MapPin } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EventCard from '@/components/EventCard.vue'
+import GoogleMapView from '@/components/GoogleMapView.vue'
 import { useAppState } from '@/composables/useAppState'
 import { parks } from '@/data/events'
 import type { EventItem } from '@/data/events'
@@ -59,6 +60,15 @@ async function shareEvent(event: EventItem) {
         <div><CalendarDays :size="20" aria-hidden="true" /><strong>{{ parkEvents.length }} 場活動</strong><span>目前示意資料</span></div>
         <div><MapPin :size="20" aria-hidden="true" /><strong>{{ selectedPark.district }}</strong><span>集合點：{{ selectedPark.meeting }}</span></div>
       </section>
+
+      <!-- Google 地圖與導航區塊 -->
+      <GoogleMapView
+        :destination-name="selectedPark.name"
+        :meeting-point="selectedPark.meeting"
+        :address="selectedPark.address"
+        :coordinates="selectedPark.lat && selectedPark.lng ? { lat: selectedPark.lat, lng: selectedPark.lng } : undefined"
+        height="220px"
+      />
 
       <section class="result-section" aria-labelledby="park-events-title">
         <div class="result-section__heading">
