@@ -97,7 +97,7 @@ function onFavorite(event: EventItem) {
 }
 
 function showNotificationStatus() {
-  statusMessage.value = '目前沒有新的活動通知'
+  router.push('/notifications')
 }
 </script>
 

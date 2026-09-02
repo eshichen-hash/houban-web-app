@@ -5,12 +5,17 @@ export type EventType =
   | '聊天'
   | '球類'
   | '健康活動'
+  | '舞蹈'
+  | '園藝'
+  | '棋藝'
+  | '手作'
+  | '攝影'
+  | '閱讀'
+  | '樂器'
+  | '志工服務'
+  | '寵物同樂'
   | '伸展'
   | '散步'
-  | '手作'
-  | '舞蹈'
-  | '棋藝'
-  | '攝影'
   | '讀書'
   | '植栽'
   | '其他'
@@ -26,6 +31,33 @@ export interface Park {
   address: string
   meeting: string
 }
+
+export interface ActivityTypeDefinition {
+  key: string
+  name: EventType
+  group: '動起來' | '交流同樂' | '創作學習' | '公園參與'
+  featured: boolean
+}
+
+export const fullActivityTypes: ActivityTypeDefinition[] = [
+  { key: 'walking', name: '健走', group: '動起來', featured: true },
+  { key: 'tai-chi', name: '太極', group: '動起來', featured: true },
+  { key: 'singing', name: '唱歌', group: '交流同樂', featured: true },
+  { key: 'chatting', name: '聊天', group: '交流同樂', featured: true },
+  { key: 'ball-games', name: '球類', group: '動起來', featured: true },
+  { key: 'wellness', name: '健康活動', group: '動起來', featured: true },
+  { key: 'dancing', name: '舞蹈', group: '動起來', featured: false },
+  { key: 'gardening', name: '園藝', group: '創作學習', featured: false },
+  { key: 'board-games', name: '棋藝', group: '交流同樂', featured: false },
+  { key: 'crafts', name: '手作', group: '創作學習', featured: false },
+  { key: 'photography', name: '攝影', group: '創作學習', featured: false },
+  { key: 'reading', name: '閱讀', group: '創作學習', featured: false },
+  { key: 'instruments', name: '樂器', group: '交流同樂', featured: false },
+  { key: 'volunteering', name: '志工服務', group: '公園參與', featured: false },
+  { key: 'pets', name: '寵物同樂', group: '公園參與', featured: false },
+]
+
+export const activityTypeGroups = ['動起來', '交流同樂', '創作學習', '公園參與'] as const
 
 export interface EventItem {
   id: string

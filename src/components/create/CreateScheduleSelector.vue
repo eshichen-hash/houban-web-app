@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { CalendarDays, ChevronRight, Clock3, MapPin, Pencil, UsersRound } from 'lucide-vue-next'
+import { CalendarDays, ChevronRight, Clock3, History, Map, MapPin, Pencil, Search, UsersRound } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import type { Park } from '@/data/events'
 
-type PickerName = 'date' | 'time' | 'park' | 'meeting'
+type PickerName = 'park' | 'meeting'
+type ParkTab = 'history' | 'search' | 'map'
 
 const props = defineProps<{
   isoDate: string
@@ -27,16 +28,19 @@ const emit = defineEmits<{
 }>()
 
 const openPicker = shallowRef<PickerName | null>(null)
-const customDateOpen = shallowRef(false)
+const parkTab = shallowRef<ParkTab>('history')
+const parkSearchQuery = shallowRef('')
 const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
 
 const selectedPark = computed(() => props.parks.find((park) => park.id === props.parkId) ?? props.parks[0])
-const timeOptions = [
-  { start: '09:00', end: '10:00', label: '上午 9:00' },
-  { start: '10:30', end: '11:30', label: '上午 10:30' },
-  { start: '14:00', end: '15:00', label: '下午 2:00' },
-]
+
+const searchedParks = computed(() => {
+  const q = parkSearchQuery.value.trim().toLowerCase()
+  if (!q) return props.parks
+  return props.parks.filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
+})
+
 const meetingOptions = computed(() => Array.from(new Set([
   selectedPark.value?.meeting,
   '公園入口',
@@ -49,8 +53,6 @@ function togglePicker(name: PickerName) {
 
 function selectDate(value: string) {
   emit('update:isoDate', value)
-  customDateOpen.value = false
-  openPicker.value = null
 }
 
 function addMinutesToTime(value: string, minutes: number) {
@@ -58,12 +60,6 @@ function addMinutesToTime(value: string, minutes: number) {
   const totalMinutes = Number(hour) * 60 + Number(minute) + minutes
   const normalizedMinutes = totalMinutes % (24 * 60)
   return `${String(Math.floor(normalizedMinutes / 60)).padStart(2, '0')}:${String(normalizedMinutes % 60).padStart(2, '0')}`
-}
-
-function selectPresetTime(start: string, end: string) {
-  emit('update:time', start)
-  emit('update:endTime', end)
-  openPicker.value = null
 }
 
 function updateStartTime(value: string) {
@@ -95,75 +91,58 @@ function saveCustomMeeting() {
 
 <template>
   <div class="schedule-grid" data-testid="create-schedule-selector">
-    <div class="schedule-row schedule-row--two">
-      <button
-        class="schedule-field schedule-field--date"
-        type="button"
-        aria-label="選擇日期"
-        aria-controls="create-date-picker"
-        :aria-expanded="openPicker === 'date'"
-        @click="togglePicker('date')"
-      >
-        <CalendarDays :size="22" aria-hidden="true" />
-        <span><small>日期</small><strong>{{ dateLabel }}</strong></span>
-        <ChevronRight :size="19" aria-hidden="true" />
-      </button>
-      <button
-        class="schedule-field schedule-field--time"
-        type="button"
-        aria-label="選擇時間"
-        aria-controls="create-time-picker"
-        :aria-expanded="openPicker === 'time'"
-        @click="togglePicker('time')"
-      >
-        <Clock3 :size="22" aria-hidden="true" />
-        <span><small>時間</small><strong>{{ timeLabel }}</strong></span>
-        <ChevronRight :size="19" aria-hidden="true" />
-      </button>
+    <!-- 1. 日期選擇 -->
+    <div class="schedule-direct-row schedule-direct-row--date" aria-label="選擇活動日期">
+      <CalendarDays :size="22" class="schedule-direct-icon" aria-hidden="true" />
+      <div class="schedule-direct-body">
+        <label class="schedule-direct-label" for="create-direct-date">
+          <small>活動日期</small>
+        </label>
+        <input
+          id="create-direct-date"
+          :value="isoDate"
+          type="date"
+          :min="todayIso"
+          class="schedule-direct-input"
+          @change="selectDate(($event.target as HTMLInputElement).value)"
+        />
+      </div>
     </div>
 
-    <div v-show="openPicker === 'date'" id="create-date-picker" class="schedule-picker-panel" aria-label="選擇活動日期">
-      <div class="schedule-choice-grid schedule-choice-grid--three">
-        <button class="schedule-choice" :class="{ 'is-selected': isoDate === todayIso }" type="button" :aria-pressed="isoDate === todayIso" @click="selectDate(todayIso)">今天</button>
-        <button class="schedule-choice" :class="{ 'is-selected': isoDate === tomorrowIso }" type="button" :aria-pressed="isoDate === tomorrowIso" @click="selectDate(tomorrowIso)">明天</button>
-        <button class="schedule-choice" :class="{ 'is-selected': customDateOpen }" type="button" :aria-pressed="customDateOpen" @click="customDateOpen = !customDateOpen"><CalendarDays :size="18" aria-hidden="true" />選日期</button>
-      </div>
-      <label v-show="customDateOpen" class="schedule-custom-field" for="create-custom-date">
-        <span>選擇活動日期</span>
-        <input id="create-custom-date" :value="isoDate" type="date" :min="todayIso" @change="selectDate(($event.target as HTMLInputElement).value)" />
-      </label>
-    </div>
-
-    <div v-show="openPicker === 'time'" id="create-time-picker" class="schedule-picker-panel" aria-label="選擇活動時間區間">
-      <div class="schedule-choice-grid schedule-choice-grid--time" aria-label="快速選擇開始時間">
-        <button
-          v-for="option in timeOptions"
-          :key="option.start"
-          class="schedule-choice"
-          :class="{ 'is-selected': time === option.start && endTime === option.end }"
-          type="button"
-          :aria-pressed="time === option.start && endTime === option.end"
-          @click="selectPresetTime(option.start, option.end)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
-      <fieldset class="schedule-time-range">
-        <legend>自訂活動時間</legend>
+    <!-- 2. 時間選擇 -->
+    <div class="schedule-direct-row schedule-direct-row--time" aria-label="設定活動時間">
+      <Clock3 :size="22" class="schedule-direct-icon" aria-hidden="true" />
+      <div class="schedule-direct-body">
         <div class="schedule-time-range__fields">
           <label class="schedule-time-field" for="create-custom-start-time">
             <span>活動開始</span>
-            <input id="create-custom-start-time" name="event-start-time" :value="time" type="time" autocomplete="off" @change="updateStartTime(($event.target as HTMLInputElement).value)" />
+            <input
+              id="create-custom-start-time"
+              name="event-start-time"
+              :value="time"
+              type="time"
+              autocomplete="off"
+              @change="updateStartTime(($event.target as HTMLInputElement).value)"
+            />
           </label>
           <span class="schedule-time-range__separator" aria-hidden="true">～</span>
           <label class="schedule-time-field" for="create-custom-end-time">
             <span>活動結束</span>
-            <input id="create-custom-end-time" name="event-end-time" :value="endTime" type="time" :min="time" autocomplete="off" @change="updateEndTime(($event.target as HTMLInputElement).value)" />
+            <input
+              id="create-custom-end-time"
+              name="event-end-time"
+              :value="endTime"
+              type="time"
+              :min="time"
+              autocomplete="off"
+              @change="updateEndTime(($event.target as HTMLInputElement).value)"
+            />
           </label>
         </div>
-      </fieldset>
+      </div>
     </div>
 
+    <!-- 3. 公園選擇 (手風琴按鈕) -->
     <button
       class="schedule-field schedule-field--wide"
       type="button"
@@ -177,17 +156,117 @@ function saveCustomMeeting() {
       <ChevronRight :size="19" aria-hidden="true" />
     </button>
     <div v-show="openPicker === 'park'" id="create-park-picker" class="schedule-picker-panel" aria-label="選擇公園">
-      <p class="schedule-picker-heading">最近／常去公園</p>
-      <div class="park-choice-list" role="listbox" aria-label="可選擇的公園">
-        <button v-for="park in parks" :key="park.id" class="park-choice" :class="{ 'is-selected': parkId === park.id }" type="button" role="option" :aria-selected="parkId === park.id" @click="selectPark(park.id)">
-          <MapPin :size="20" aria-hidden="true" />
-          <span><strong>{{ park.name }}</strong><small>{{ park.address }}</small></span>
-          <span class="park-choice__status">{{ parkId === park.id ? '已選擇' : '選擇' }}</span>
+      <!-- 來源切換頁籤：最近／常去、搜尋、地圖 -->
+      <div class="place-source-tabs" role="tablist" aria-label="公園切換方式">
+        <button
+          class="place-source-tab"
+          :class="{ 'is-active': parkTab === 'history' }"
+          type="button"
+          role="tab"
+          :aria-selected="parkTab === 'history'"
+          @click="parkTab = 'history'"
+        >
+          <History :size="20" aria-hidden="true" />
+          <span>最近／常去</span>
+        </button>
+        <button
+          class="place-source-tab"
+          :class="{ 'is-active': parkTab === 'search' }"
+          type="button"
+          role="tab"
+          :aria-selected="parkTab === 'search'"
+          @click="parkTab = 'search'"
+        >
+          <Search :size="20" aria-hidden="true" />
+          <span>搜尋</span>
+        </button>
+        <button
+          class="place-source-tab"
+          :class="{ 'is-active': parkTab === 'map' }"
+          type="button"
+          role="tab"
+          :aria-selected="parkTab === 'map'"
+          @click="parkTab = 'map'"
+        >
+          <Map :size="20" aria-hidden="true" />
+          <span>地圖</span>
         </button>
       </div>
-      <p class="schedule-picker-note">目前使用本地公園資料；Google 地圖搜尋將在核心流程穩定後串接。</p>
+
+      <!-- 頁籤一：最近／常去公園 -->
+      <div v-show="parkTab === 'history'" class="quick-park-history-panel">
+        <div class="quick-park-history-list" role="listbox" aria-label="歷史與常去公園">
+          <button
+            v-for="park in parks"
+            :key="park.id"
+            class="quick-park-history-item"
+            :class="{ 'is-selected': parkId === park.id }"
+            type="button"
+            role="option"
+            :aria-selected="parkId === park.id"
+            @click="selectPark(park.id)"
+          >
+            <History :size="20" class="quick-park-item-icon" aria-hidden="true" />
+            <span class="quick-park-item-text">
+              <strong>{{ park.name }}</strong>
+              <small>{{ park.district }}</small>
+            </span>
+            <span class="park-saved-tag">已保存</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 頁籤二：搜尋公園 -->
+      <div v-show="parkTab === 'search'" class="quick-park-search-panel">
+        <div class="park-search-input-wrap">
+          <Search :size="18" class="park-search-icon" aria-hidden="true" />
+          <input
+            v-model.trim="parkSearchQuery"
+            type="text"
+            class="park-search-input"
+            placeholder="搜尋公園名稱或行政區..."
+          />
+        </div>
+        <div class="quick-park-history-list" style="margin-top: 10px;">
+          <button
+            v-for="park in searchedParks"
+            :key="park.id"
+            class="quick-park-history-item"
+            :class="{ 'is-selected': parkId === park.id }"
+            type="button"
+            @click="selectPark(park.id)"
+          >
+            <MapPin :size="20" class="quick-park-item-icon" aria-hidden="true" />
+            <span class="quick-park-item-text">
+              <strong>{{ park.name }}</strong>
+              <small>{{ park.address }}</small>
+            </span>
+            <span class="park-saved-tag">{{ parkId === park.id ? '已選擇' : '選擇' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 頁籤三：地圖模式 -->
+      <div v-show="parkTab === 'map'" class="quick-park-map-panel">
+        <div class="create-map-demo" role="img" aria-label="公園位置示意地圖">
+          <span class="create-map-label">地圖找公園・原型示意</span>
+          <button
+            v-for="park in parks"
+            :key="park.id"
+            class="create-map-pin"
+            :class="{ 'is-active': parkId === park.id }"
+            type="button"
+            @click="selectPark(park.id)"
+          >
+            <MapPin :size="18" aria-hidden="true" />
+            <span class="create-map-pin-label">{{ park.name }}</span>
+          </button>
+        </div>
+        <p class="create-map-note">點選地圖上的公園即可帶入名稱；正式版可串接 Google Maps。</p>
+      </div>
     </div>
 
+    <!-- 4. 集合地點選擇 (手風琴按鈕) -->
     <button
       class="schedule-field schedule-field--wide"
       type="button"

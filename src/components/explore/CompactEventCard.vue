@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { Clock3, MapPin } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { useAppState } from '@/composables/useAppState'
 import type { EventItem } from '@/data/events'
 
 const props = defineProps<{
   event: EventItem
 }>()
+
+const { state } = useAppState()
+const isRegistered = computed(() => state.registered.includes(props.event.id))
 </script>
 
 <template>
@@ -16,7 +21,8 @@ const props = defineProps<{
       <div class="compact-event-card__body">
         <div class="compact-event-card__topline">
           <span>{{ props.event.type }}・{{ props.event.difficulty }}</span>
-          <span>剩 {{ props.event.spots }} 位</span>
+          <span v-if="isRegistered" class="tag tag--success" style="padding: 2px 8px; font-size: 0.78rem;">✓ 已報名</span>
+          <span v-else>剩 {{ props.event.spots }} 位</span>
         </div>
         <h3>{{ props.event.title }}</h3>
         <div class="compact-event-card__facts">

@@ -2,6 +2,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useTemplateRef } from 'vue'
 import EventCard from '@/components/EventCard.vue'
+import { useAppState } from '@/composables/useAppState'
 import { useHorizontalCarousel } from '@/composables/useHorizontalCarousel'
 import type { EventItem } from '@/data/events'
 
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   toggleFavorite: [event: EventItem]
 }>()
 
+const { state } = useAppState()
 const track = useTemplateRef<HTMLDivElement>('track')
 const { currentIndex, itemCount, canPrevious, canNext, move } = useHorizontalCarousel(track, {
   itemSelector: '.recommendation-slide',
@@ -39,6 +41,7 @@ const { currentIndex, itemCount, canPrevious, canNext, move } = useHorizontalCar
           featured
           :priority="index === 0"
           :favorite="props.favorites.includes(event.id)"
+          :registered="state.registered.includes(event.id)"
           @open="emit('open', $event)"
           @share="emit('share', $event)"
           @toggle-favorite="emit('toggleFavorite', $event)"

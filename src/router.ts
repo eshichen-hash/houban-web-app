@@ -8,6 +8,7 @@ import SuccessView from './views/SuccessView.vue'
 import CreateView from './views/CreateView.vue'
 import ManageView from './views/ManageView.vue'
 import MyView from './views/MyView.vue'
+import NotificationsView from './views/NotificationsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +23,7 @@ const router = createRouter({
     { path: '/create', name: 'create', component: CreateView, meta: { root: 'create' } },
     { path: '/manage', name: 'manage', component: ManageView, meta: { root: 'create' } },
     { path: '/my', name: 'my', component: MyView, meta: { root: 'my' } },
+    { path: '/notifications', name: 'notifications', component: NotificationsView },
     { path: '/:pathMatch(.*)*', redirect: '/explore' },
   ],
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Minus, Plus, Sparkles, UsersRound } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Minus, Plus, Sparkles, UsersRound, X } from 'lucide-vue-next'
 import { computed, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedActivitySettings from '@/components/create/AdvancedActivitySettings.vue'
@@ -7,7 +7,7 @@ import CreateScheduleSelector from '@/components/create/CreateScheduleSelector.v
 import EditableActivityIntro from '@/components/create/EditableActivityIntro.vue'
 import EditableActivityName from '@/components/create/EditableActivityName.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
-import { activityTypes, type Difficulty } from '@/data/events'
+import { fullActivityTypes, activityTypeGroups, type Difficulty, type EventType } from '@/data/events'
 import { useAppState } from '@/composables/useAppState'
 import { useCreateEventDraft } from '@/composables/useCreateEventDraft'
 
@@ -37,11 +37,22 @@ const {
   buildEventInput,
 } = useCreateEventDraft()
 
-const showAllTypes = shallowRef(false)
+const showTypeSheet = shallowRef(false)
 const guideOpen = shallowRef(false)
 const statusMessage = shallowRef('')
 
-const visibleTypes = computed(() => showAllTypes.value ? activityTypes : activityTypes.slice(0, 6))
+const featuredTypes = computed(() => {
+  const featured = fullActivityTypes.filter((t) => t.featured).slice(0, 6).map((t) => t.name)
+  if (form.type && !featured.includes(form.type as EventType)) {
+    return [form.type as EventType, ...featured.slice(0, 5)]
+  }
+  return featured
+})
+
+function selectTypeAndCloseSheet(type: EventType) {
+  form.type = type
+  showTypeSheet.value = false
+}
 
 watch(() => form.type, () => {
   statusMessage.value = form.type ? `已選 ${form.type}` : '請選擇一種活動類型'
@@ -82,24 +93,76 @@ function submit() {
         <button class="text-link intro-card__link" type="button" aria-controls="create-guide-details" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">{{ guideOpen ? '收起說明' : '查看怎麼發起' }} <ChevronDown :size="18" aria-hidden="true" /></button>
       </section>
 
-      <section class="form-section" aria-labelledby="step-one-title">
-        <div class="step-heading"><div><div class="eyebrow">第一步</div><h2 id="step-one-title">想發起什麼活動？</h2></div><strong>請選 1 種</strong></div>
-        <div class="type-grid" role="radiogroup" aria-label="請選擇 1 種活動類型">
+      <section class="form-section form-section--transparent-bg" aria-labelledby="step-one-title">
+        <div class="step-heading">
+          <div>
+            <div class="eyebrow">第一步</div>
+            <h2 id="step-one-title">想發起什麼活動？</h2>
+          </div>
+          <span class="activity-type-status" :class="{ 'is-selected': form.type }">
+            <span v-if="form.type">✓ 已選 {{ form.type }}</span>
+            <span v-else>請選 1 種</span>
+          </span>
+        </div>
+        <div class="activity-type-grid" role="radiogroup" aria-label="請選擇 1 種活動類型">
           <button
-            v-for="type in visibleTypes"
+            v-for="type in featuredTypes"
             :key="type"
-            class="type-choice"
+            class="activity-type-btn"
             :class="{ 'is-selected': form.type === type }"
             type="button"
             role="radio"
             :aria-checked="form.type === type"
             @click="form.type = type"
           >
-            <span v-if="form.type === type" aria-hidden="true">✓ </span>{{ type }}
+            <span v-if="form.type === type" class="check-mark" aria-hidden="true">✓</span>
+            <span>{{ type }}</span>
           </button>
         </div>
-        <button class="full-width-choice" type="button" @click="showAllTypes = !showAllTypes">{{ showAllTypes ? '收起活動類型' : '查看全部 15 種活動' }} <ChevronRight :size="18" aria-hidden="true" /></button>
+        <button class="full-width-choice full-width-choice--types" type="button" aria-label="查看全部 15 種活動" @click="showTypeSheet = true">
+          <span>查看全部 15 種活動</span>
+          <ChevronRight :size="18" aria-hidden="true" />
+        </button>
       </section>
+
+      <!-- 底部抽屜彈窗 (Bottom Sheet): 全部 15 種活動 -->
+      <Teleport to="body">
+        <div v-if="showTypeSheet" class="overlay" @click.self="showTypeSheet = false">
+          <section class="sheet activity-type-sheet" role="dialog" aria-modal="true" aria-labelledby="activity-type-sheet-title" aria-describedby="activity-type-sheet-desc">
+            <div class="sheet-handle"></div>
+            <header class="sheet-header">
+              <div>
+                <span class="eyebrow">15 種活動</span>
+                <h2 id="activity-type-sheet-title">選擇活動類型</h2>
+              </div>
+              <button class="icon-button" type="button" aria-label="關閉活動類型選擇" @click="showTypeSheet = false">
+                <X :size="20" aria-hidden="true" />
+              </button>
+            </header>
+            <div class="sheet-body">
+              <p class="muted activity-type-sheet-intro" id="activity-type-sheet-desc">依活動方式分組，選擇 1 種後會自動帶回表單。</p>
+              <div class="activity-type-groups">
+                <fieldset v-for="group in activityTypeGroups" :key="group" class="activity-type-group">
+                  <legend>{{ group }}</legend>
+                  <div class="activity-type-sheet-grid">
+                    <button
+                      v-for="item in fullActivityTypes.filter((t) => t.group === group)"
+                      :key="item.key"
+                      class="activity-type-btn"
+                      :class="{ 'is-selected': form.type === item.name }"
+                      type="button"
+                      @click="selectTypeAndCloseSheet(item.name)"
+                    >
+                      <span v-if="form.type === item.name" class="check-mark" aria-hidden="true">✓</span>
+                      <span>{{ item.name }}</span>
+                    </button>
+                  </div>
+                </fieldset>
+              </div>
+            </div>
+          </section>
+        </div>
+      </Teleport>
 
       <section class="form-section" aria-labelledby="step-two-title">
         <div class="step-heading"><div><div class="eyebrow">第二步</div><h2 id="step-two-title">安排行程</h2></div><span>日期、時間與地點</span></div>

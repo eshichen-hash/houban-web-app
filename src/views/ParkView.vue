@@ -47,7 +47,7 @@ async function shareEvent(event: EventItem) {
         <strong>公園活動</strong>
         <small>{{ selectedPark?.name ?? '選擇公園' }}</small>
       </div>
-      <button class="icon-button" type="button" aria-label="通知"><Bell :size="22" aria-hidden="true" /></button>
+      <button class="icon-button" type="button" aria-label="通知" @click="router.push('/notifications')"><Bell :size="22" aria-hidden="true" /></button>
     </header>
 
     <main v-if="selectedPark" class="page-content" aria-labelledby="park-title">

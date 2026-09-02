@@ -7,7 +7,8 @@ const props = withDefaults(defineProps<{
   featured?: boolean
   favorite?: boolean
   priority?: boolean
-}>(), { featured: false, favorite: false, priority: false })
+  registered?: boolean
+}>(), { featured: false, favorite: false, priority: false, registered: false })
 
 const emit = defineEmits<{
   open: [event: EventItem]
@@ -44,7 +45,8 @@ const emit = defineEmits<{
           <span class="eyebrow">{{ props.event.type }}・{{ props.event.difficulty }}</span>
           <h2 class="event-card__title">{{ props.event.title }}</h2>
         </div>
-        <span class="capacity-badge">尚有 {{ props.event.spots }} 個名額</span>
+        <span v-if="props.registered" class="capacity-badge" style="background: rgba(220, 252, 231, 0.95); color: #166534; border: 1px solid #86efac;">✓ 已報名</span>
+        <span v-else class="capacity-badge">尚有 {{ props.event.spots }} 個名額</span>
       </div>
       <div class="event-card__facts">
         <span><Clock3 :size="18" aria-hidden="true" />{{ props.event.time }}</span>
