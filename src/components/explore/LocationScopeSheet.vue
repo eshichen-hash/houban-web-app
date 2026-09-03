@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { LocateFixed, MapPin, X } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
-import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
+import { ArrowLeft, Check, Loader2, LocateFixed, MapPin, Search, Sparkles, X } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import type { SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
 import type { ExploreRadius, ExploreScope } from '@/types/explore'
+
+interface PlaceSuggestion {
+  placeId: string
+  mainText: string
+  secondaryText: string
+  fullText: string
+}
 
 const props = defineProps<{
   open: boolean
@@ -19,9 +26,9 @@ const emit = defineEmits<{
 }>()
 
 const panel = useTemplateRef<HTMLElement>('panel')
+const overlayInputRef = useTemplateRef<HTMLInputElement>('overlayInputRef')
 const radiusOptions: ExploreRadius[] = [1, 3, 5, 10]
 const draft = reactive<ExploreScope>({ ...props.scope })
-const searchQuery = ref('')
 const canApply = computed(() => true)
 
 let previousFocus: HTMLElement | null = null
@@ -29,7 +36,18 @@ let previousBodyOverflow = ''
 
 const selectedParkData = ref<SelectedParkResult | null>(null)
 const isLocating = ref(false)
-const isSearchFocused = ref(false)
+
+// 專屬全螢幕搜尋視圖狀態
+const isDedicatedSearchOpen = ref(false)
+const overlayQuery = ref('')
+const overlaySuggestions = ref<PlaceSuggestion[]>([])
+const isSearchingPlaces = ref(false)
+const apiKey = shallowRef(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '')
+
+let autocompleteService: any = null
+let placesService: any = null
+let sessionToken: any = null
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function syncDraft() {
   Object.assign(draft, props.scope)
@@ -55,6 +73,169 @@ function syncDraft() {
   }
 }
 
+async function loadGoogleMapsSDK(): Promise<boolean> {
+  if (window.google?.maps?.places) return true
+  if (!apiKey.value) return false
+
+  if (!window.__googleMapsLoadingPromise) {
+    window.__googleMapsLoadingPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey.value}&libraries=places,marker&language=zh-TW&region=TW&v=weekly`
+      script.async = true
+      script.defer = true
+      script.onload = () => resolve()
+      script.onerror = (err) => reject(err)
+      document.head.appendChild(script)
+    })
+  }
+
+  try {
+    await window.__googleMapsLoadingPromise
+    return Boolean(window.google?.maps?.places)
+  } catch {
+    return false
+  }
+}
+
+async function initPlacesServices(): Promise<boolean> {
+  const loaded = await loadGoogleMapsSDK()
+  if (!loaded || !window.google?.maps?.places) return false
+
+  if (!autocompleteService) {
+    autocompleteService = new window.google.maps.places.AutocompleteService()
+  }
+  if (!placesService) {
+    const dummyDiv = document.createElement('div')
+    placesService = new window.google.maps.places.PlacesService(dummyDiv)
+  }
+  if (!sessionToken && window.google?.maps?.places?.AutocompleteSessionToken) {
+    sessionToken = new window.google.maps.places.AutocompleteSessionToken()
+  }
+  return true
+}
+
+async function fetchOverlaySuggestions(val: string) {
+  const text = val.trim()
+  if (!text) {
+    overlaySuggestions.value = []
+    isSearchingPlaces.value = false
+    return
+  }
+
+  isSearchingPlaces.value = true
+
+  const isReady = await initPlacesServices()
+  if (!isReady || !autocompleteService) {
+    overlaySuggestions.value = props.parks
+      .filter((p) => p.name.includes(text) || p.district.includes(text) || p.address.includes(text))
+      .map((p) => ({
+        placeId: p.id,
+        mainText: p.name,
+        secondaryText: p.address,
+        fullText: `${p.district} ${p.name}`,
+      }))
+    isSearchingPlaces.value = false
+    return
+  }
+
+  const request = {
+    input: text,
+    componentRestrictions: { country: 'tw' },
+    sessionToken,
+    language: 'zh-TW',
+  }
+
+  autocompleteService.getPlacePredictions(request, (predictions: any, status: any) => {
+    isSearchingPlaces.value = false
+    if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+      overlaySuggestions.value = predictions.map((p: any) => ({
+        placeId: p.place_id,
+        mainText: p.structured_formatting?.main_text || p.description,
+        secondaryText: p.structured_formatting?.secondary_text || '',
+        fullText: p.description,
+      }))
+    } else {
+      overlaySuggestions.value = props.parks
+        .filter((p) => p.name.includes(text) || p.district.includes(text) || p.address.includes(text))
+        .map((p) => ({
+          placeId: p.id,
+          mainText: p.name,
+          secondaryText: p.address,
+          fullText: `${p.district} ${p.name}`,
+        }))
+    }
+  })
+}
+
+function handleOverlayInput(e: Event) {
+  const val = (e.target as HTMLInputElement).value
+  overlayQuery.value = val
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    fetchOverlaySuggestions(val)
+  }, 120)
+}
+
+function handleOverlaySelect(item: PlaceSuggestion) {
+  if (!placesService || !item.placeId) {
+    const existing = props.parks.find((p) => p.id === item.placeId || p.name === item.mainText)
+    const result: SelectedParkResult = {
+      name: item.mainText,
+      address: item.secondaryText || existing?.address || '',
+      district: existing?.district || '台北市',
+      lat: existing?.lat,
+      lng: existing?.lng,
+    }
+    handleGoogleParkSelect(result)
+    closeDedicatedSearch()
+    return
+  }
+
+  placesService.getDetails(
+    { placeId: item.placeId, fields: ['name', 'formatted_address', 'geometry', 'address_components'], sessionToken },
+    (place: any, status: any) => {
+      let district = ''
+      if (place?.address_components) {
+        const sub = place.address_components.find((c: any) =>
+          c.types.includes('administrative_area_level_3') || c.types.includes('sublocality_level_1')
+        )
+        if (sub) district = sub.long_name
+      }
+
+      const result: SelectedParkResult = {
+        name: place?.name || item.mainText,
+        address: place?.formatted_address || item.secondaryText,
+        district: district || '台北市',
+        lat: place?.geometry?.location?.lat ? place.geometry.location.lat() : undefined,
+        lng: place?.geometry?.location?.lng ? place.geometry.location.lng() : undefined,
+      }
+
+      handleGoogleParkSelect(result)
+      closeDedicatedSearch()
+    }
+  )
+}
+
+async function openDedicatedSearch() {
+  isDedicatedSearchOpen.value = true
+  overlayQuery.value = ''
+  overlaySuggestions.value = []
+  await nextTick()
+  overlayInputRef.value?.focus()
+  initPlacesServices()
+}
+
+function closeDedicatedSearch() {
+  isDedicatedSearchOpen.value = false
+  overlayQuery.value = ''
+  overlaySuggestions.value = []
+}
+
+function selectGpsAndClose() {
+  useCurrentLocation()
+  closeDedicatedSearch()
+}
+
 async function detectCurrentLocation() {
   if (!navigator.geolocation) {
     draft.location = '大安區'
@@ -70,7 +251,6 @@ async function detectCurrentLocation() {
 
       let foundDistrict = ''
 
-      // 1. 若 Google Maps SDK 已就緒，使用 Google Geocoder 進行反向地理編碼
       if (window.google?.maps?.Geocoder) {
         try {
           const geocoder = new window.google.maps.Geocoder()
@@ -88,7 +268,6 @@ async function detectCurrentLocation() {
         }
       }
 
-      // 2. 網絡備援反向編碼
       if (!foundDistrict) {
         try {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`)
@@ -126,13 +305,10 @@ function useCurrentLocation() {
 function clearSelectedGooglePark() {
   draft.selectedParkId = null
   selectedParkData.value = null
-  searchQuery.value = ''
   draft.locationMode = 'current'
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
-  isSearchFocused.value = false
-  searchQuery.value = result.name
   selectedParkData.value = result
   draft.locationMode = 'park'
   draft.selectedParkId = result.name
@@ -152,8 +328,8 @@ function focusableElements() {
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    if (isSearchFocused.value) {
-      isSearchFocused.value = false
+    if (isDedicatedSearchOpen.value) {
+      closeDedicatedSearch()
       return
     }
     emit('close')
@@ -180,7 +356,7 @@ watch(draft, (value) => {
 
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
-    isSearchFocused.value = false
+    isDedicatedSearchOpen.value = false
     syncDraft()
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     previousBodyOverflow = document.body.style.overflow
@@ -191,7 +367,7 @@ watch(() => props.open, async (isOpen) => {
     return
   }
 
-  isSearchFocused.value = false
+  isDedicatedSearchOpen.value = false
   document.body.style.overflow = previousBodyOverflow
   await nextTick()
   previousFocus?.focus()
@@ -205,13 +381,12 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="dialog-fade">
-      <div v-if="open" class="responsive-dialog" :class="{ 'is-search-focused': isSearchFocused }" role="presentation">
+      <div v-if="open" class="responsive-dialog" role="presentation">
       <div class="responsive-dialog__backdrop" aria-hidden="true" @click="emit('close')"></div>
       <section
         id="explore-scope-dialog"
         ref="panel"
         class="responsive-dialog__panel scope-sheet"
-        :class="{ 'is-search-focused': isSearchFocused }"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scope-sheet-title"
@@ -252,24 +427,29 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 預設：即時搜尋框 ＋ GPS 快捷按鈕 -->
+            <!-- 預設：搜尋觸發框 ＋ GPS 快捷按鈕 -->
             <div v-else class="scope-search-block">
-              <ParkAutocomplete
-                v-model="searchQuery"
-                placeholder="輸入地點或公園名稱"
-                :auto-focus="false"
-                @focus="isSearchFocused = true"
-                @select="handleGoogleParkSelect"
-              />
-              <button v-show="!isSearchFocused" class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
+              <div
+                class="search-trigger-box"
+                role="button"
+                tabindex="0"
+                aria-label="點擊開啟全螢幕搜尋"
+                @click="openDedicatedSearch"
+                @keydown.enter="openDedicatedSearch"
+                @keydown.space.prevent="openDedicatedSearch"
+              >
+                <Search :size="18" class="search-trigger-icon" aria-hidden="true" />
+                <span class="search-trigger-placeholder">輸入地點或公園名稱</span>
+              </div>
+              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
                 <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
                 <span>{{ isLocating ? '正在取得 GPS 定位...' : `使用我目前的 GPS 位置（已定位：${draft.location || '大安區'}）` }}</span>
               </button>
             </div>
           </fieldset>
 
-          <!-- 2. 活動搜尋範圍 (搜尋活躍時隱藏以防被鍵盤擠壓) -->
-          <fieldset v-show="!isSearchFocused" class="scope-sheet__group">
+          <!-- 2. 活動搜尋範圍 -->
+          <fieldset class="scope-sheet__group">
             <legend>活動搜尋半徑</legend>
             <div class="radius-options" role="group" aria-label="選擇活動搜尋範圍">
               <button
@@ -288,13 +468,87 @@ onBeforeUnmount(() => {
           </fieldset>
         </div>
 
-        <footer v-show="!isSearchFocused" class="responsive-dialog__footer">
+        <footer class="responsive-dialog__footer">
           <p class="scope-sheet__count" aria-live="polite">目前條件有 {{ resultCount }} 場活動</p>
           <button class="button button--primary button--full" type="button" :disabled="!canApply" @click="applyScope">
             顯示 {{ resultCount }} 場附近活動
           </button>
         </footer>
       </section>
+      </div>
+    </Transition>
+
+    <!-- App 級專屬全螢幕搜尋視圖 (Dedicated Full-Screen Search View) -->
+    <Transition name="search-overlay-fade">
+      <div v-if="isDedicatedSearchOpen" class="search-fullscreen-overlay" role="dialog" aria-modal="true" aria-label="搜尋地點或公園">
+        <!-- 頂部搜尋列 -->
+        <header class="search-overlay-topbar">
+          <button class="search-overlay-back" type="button" aria-label="返回上一頁" @click="closeDedicatedSearch">
+            <ArrowLeft :size="22" aria-hidden="true" />
+          </button>
+          <div class="search-overlay-input-wrap">
+            <Search :size="18" class="search-overlay-input-icon" aria-hidden="true" />
+            <input
+              ref="overlayInputRef"
+              :value="overlayQuery"
+              type="text"
+              placeholder="輸入地點或公園名稱..."
+              autocomplete="off"
+              class="search-overlay-input"
+              @input="handleOverlayInput"
+            />
+            <button v-if="overlayQuery" class="search-overlay-clear" type="button" aria-label="清除文字" @click="overlayQuery = ''; overlaySuggestions = []">
+              <X :size="18" aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <!-- 快速定位動作列 -->
+        <div class="search-overlay-shortcuts">
+          <button class="search-overlay-gps-btn" type="button" @click="selectGpsAndClose">
+            <div class="search-overlay-gps-icon">
+              <LocateFixed :size="18" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+            </div>
+            <div class="search-overlay-gps-text">
+              <strong>使用我目前的 GPS 位置</strong>
+              <small>已定位：{{ draft.location || '大安區' }}</small>
+            </div>
+          </button>
+        </div>
+
+        <!-- 即時搜尋結果捲動清單 (100% 滿版無阻礙) -->
+        <div class="search-overlay-results">
+          <div v-if="isSearchingPlaces" class="search-overlay-status">
+            <Loader2 :size="20" class="animate-spin" aria-hidden="true" />
+            <span>正在連線 Google 地圖搜尋全台...</span>
+          </div>
+
+          <div v-else-if="overlaySuggestions.length > 0" class="search-overlay-list">
+            <div class="search-overlay-list-header">
+              <Sparkles :size="14" aria-hidden="true" />
+              <span>Google 地圖即時推薦</span>
+            </div>
+            <button
+              v-for="item in overlaySuggestions"
+              :key="item.placeId"
+              class="search-overlay-item"
+              type="button"
+              @click="handleOverlaySelect(item)"
+            >
+              <div class="search-overlay-item-pin">
+                <MapPin :size="20" aria-hidden="true" />
+              </div>
+              <div class="search-overlay-item-info">
+                <strong>{{ item.mainText }}</strong>
+                <span>{{ item.secondaryText || item.fullText }}</span>
+              </div>
+            </button>
+          </div>
+
+          <div v-else-if="overlayQuery.trim()" class="search-overlay-empty">
+            <p>找不到符合「{{ overlayQuery }}」的地點，請嘗試其他關鍵字</p>
+          </div>
+        </div>
       </div>
     </Transition>
   </Teleport>

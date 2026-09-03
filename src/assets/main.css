@@ -1372,12 +1372,45 @@ html { scroll-padding-top: 96px; }
   transform: rotate(-180deg);
 }
 
-/* 探索範圍 - GPS 快選按鈕樣式 */
+/* 探索範圍 - 觸發搜尋框與 GPS 快選按鈕樣式 */
 .scope-search-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
+}
+
+.search-trigger-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid #b9d0da;
+  border-radius: 14px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+}
+
+.search-trigger-box:hover {
+  border-color: #5b8d70;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(91, 141, 112, 0.15);
+}
+
+.search-trigger-icon {
+  color: var(--color-primary, #214c69);
+  flex-shrink: 0;
+}
+
+.search-trigger-placeholder {
+  color: var(--color-text-muted, #7c8f94);
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .btn-gps-shortcut {
@@ -1405,6 +1438,243 @@ html { scroll-padding-top: 96px; }
 
 .btn-gps-shortcut:active {
   transform: scale(0.97);
+}
+
+/* App 級專屬全螢幕搜尋視圖 (Dedicated Full-Screen Search View) */
+.search-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: overlayFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.search-overlay-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+  box-sizing: border-box;
+}
+
+.search-overlay-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--ink, #20343b);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.18s ease;
+}
+
+.search-overlay-back:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.search-overlay-input-wrap {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f1f5f9;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.search-overlay-input-wrap:focus-within {
+  background: #ffffff;
+  border-color: #5b8d70;
+  box-shadow: 0 0 0 3px rgba(91, 141, 112, 0.15);
+}
+
+.search-overlay-input-icon {
+  color: var(--ink-soft, #64748b);
+  flex-shrink: 0;
+}
+
+.search-overlay-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink, #0f172a);
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0;
+}
+
+.search-overlay-clear {
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft, #64748b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.search-overlay-shortcuts {
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+}
+
+.search-overlay-gps-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.search-overlay-gps-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e0f2fe;
+  color: #0369a1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.search-overlay-gps-text strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--color-primary, #214c69);
+  font-weight: 800;
+}
+
+.search-overlay-gps-text small {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ink-soft, #64748b);
+  margin-top: 2px;
+}
+
+.search-overlay-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px 40px;
+}
+
+.search-overlay-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 0;
+  color: var(--ink-soft, #64748b);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.search-overlay-list-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #0369a1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.search-overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.search-overlay-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 12px;
+  background: #ffffff;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.18s ease;
+}
+
+.search-overlay-item:hover,
+.search-overlay-item:active {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.search-overlay-item-pin {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(33, 76, 105, 0.08);
+  color: var(--color-primary, #214c69);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.search-overlay-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-overlay-item-info strong {
+  display: block;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-overlay-item-info span {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--ink-soft, #64748b);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-overlay-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--ink-soft, #64748b);
+  font-size: 0.95rem;
 }
 
 /* 活動行程區塊 對稱式 Auto Layout & RWD */
