@@ -124,8 +124,8 @@ function saveCustomMeeting() {
     <div class="schedule-direct-row schedule-direct-row--date" aria-label="選擇活動日期">
       <CalendarDays :size="22" class="schedule-direct-icon" aria-hidden="true" />
       <div class="schedule-direct-body">
-        <label class="schedule-direct-label" for="create-direct-date">
-          <small>活動日期</small>
+        <label class="schedule-field-label" for="create-direct-date">
+          活動日期
         </label>
         <input
           id="create-direct-date"
@@ -144,7 +144,7 @@ function saveCustomMeeting() {
       <div class="schedule-direct-body">
         <div class="schedule-time-range__fields">
           <label class="schedule-time-field" for="create-custom-start-time">
-            <span>活動開始</span>
+            <span class="schedule-field-label">活動開始</span>
             <input
               id="create-custom-start-time"
               name="event-start-time"
@@ -156,7 +156,7 @@ function saveCustomMeeting() {
           </label>
           <span class="schedule-time-range__separator" aria-hidden="true">～</span>
           <label class="schedule-time-field" for="create-custom-end-time">
-            <span>活動結束</span>
+            <span class="schedule-field-label">活動結束</span>
             <input
               id="create-custom-end-time"
               name="event-end-time"
@@ -175,9 +175,9 @@ function saveCustomMeeting() {
     <div class="schedule-direct-row schedule-direct-row--location" aria-label="選擇活動地點">
       <MapPin :size="22" class="schedule-direct-icon" aria-hidden="true" />
       <div class="schedule-direct-body">
-        <div class="field-heading">
-          <strong>活動地點</strong>
-          <span>連線 Google 地圖搜尋全台</span>
+        <div class="schedule-field-label-group">
+          <span class="schedule-field-label">活動地點</span>
+          <small>連線 Google 地圖搜尋全台</small>
         </div>
 
         <!-- 已選定活動地點資訊卡片 -->
@@ -225,7 +225,7 @@ function saveCustomMeeting() {
       @click="togglePicker('meeting')"
     >
       <UsersRound :size="22" aria-hidden="true" />
-      <span><small>集合地點</small><strong>{{ meeting }}</strong></span>
+      <span><span class="schedule-field-label">集合地點</span><strong>{{ meeting || '請先選擇活動地點或自訂集合處' }}</strong></span>
       <ChevronRight :size="19" aria-hidden="true" />
     </button>
     <div v-show="openPicker === 'meeting'" id="create-meeting-picker" class="schedule-picker-panel" aria-label="選擇集合地點">
