@@ -121,12 +121,12 @@ function saveCustomMeeting() {
 <template>
   <div class="schedule-grid" data-testid="create-schedule-selector">
     <!-- 1. 日期選擇 -->
-    <div class="schedule-direct-row schedule-direct-row--date" aria-label="選擇活動日期">
-      <CalendarDays :size="22" class="schedule-direct-icon" aria-hidden="true" />
-      <div class="schedule-direct-body">
-        <label class="schedule-field-label" for="create-direct-date">
-          活動日期
-        </label>
+    <div class="schedule-card-row schedule-card-row--date" aria-label="選擇活動日期">
+      <div class="schedule-row-header">
+        <CalendarDays :size="18" class="schedule-row-icon" aria-hidden="true" />
+        <label class="schedule-row-title" for="create-direct-date">活動日期</label>
+      </div>
+      <div class="schedule-row-control">
         <input
           id="create-direct-date"
           :value="isoDate"
@@ -139,46 +139,48 @@ function saveCustomMeeting() {
     </div>
 
     <!-- 2. 時間選擇 -->
-    <div class="schedule-direct-row schedule-direct-row--time" aria-label="設定活動時間">
-      <Clock3 :size="22" class="schedule-direct-icon" aria-hidden="true" />
-      <div class="schedule-direct-body">
-        <div class="schedule-time-range__fields">
-          <label class="schedule-time-field" for="create-custom-start-time">
-            <span class="schedule-field-label">活動開始</span>
-            <input
-              id="create-custom-start-time"
-              name="event-start-time"
-              :value="time"
-              type="time"
-              autocomplete="off"
-              @change="updateStartTime(($event.target as HTMLInputElement).value)"
-            />
-          </label>
-          <span class="schedule-time-range__separator" aria-hidden="true">～</span>
-          <label class="schedule-time-field" for="create-custom-end-time">
-            <span class="schedule-field-label">活動結束</span>
-            <input
-              id="create-custom-end-time"
-              name="event-end-time"
-              :value="endTime"
-              type="time"
-              :min="time"
-              autocomplete="off"
-              @change="updateEndTime(($event.target as HTMLInputElement).value)"
-            />
-          </label>
+    <div class="schedule-card-row schedule-card-row--time" aria-label="設定活動時間">
+      <div class="schedule-row-header">
+        <Clock3 :size="18" class="schedule-row-icon" aria-hidden="true" />
+        <span class="schedule-row-title">活動時間</span>
+      </div>
+      <div class="schedule-time-flow">
+        <div class="schedule-time-block">
+          <span class="schedule-sublabel">活動開始</span>
+          <input
+            id="create-custom-start-time"
+            name="event-start-time"
+            :value="time"
+            type="time"
+            autocomplete="off"
+            class="schedule-time-input"
+            @change="updateStartTime(($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="schedule-time-tilde" aria-hidden="true">～</div>
+        <div class="schedule-time-block">
+          <span class="schedule-sublabel">活動結束</span>
+          <input
+            id="create-custom-end-time"
+            name="event-end-time"
+            :value="endTime"
+            type="time"
+            :min="time"
+            autocomplete="off"
+            class="schedule-time-input"
+            @change="updateEndTime(($event.target as HTMLInputElement).value)"
+          />
         </div>
       </div>
     </div>
 
     <!-- 3. 活動地點選擇 (直接顯示於介面，自動適應 RWD Auto Layout) -->
-    <div class="schedule-direct-row schedule-direct-row--location" aria-label="選擇活動地點">
-      <MapPin :size="22" class="schedule-direct-icon" aria-hidden="true" />
-      <div class="schedule-direct-body">
-        <label class="schedule-field-label">
-          活動地點
-        </label>
-
+    <div class="schedule-card-row schedule-card-row--location" aria-label="選擇活動地點">
+      <div class="schedule-row-header">
+        <MapPin :size="18" class="schedule-row-icon" aria-hidden="true" />
+        <span class="schedule-row-title">活動地點</span>
+      </div>
+      <div class="schedule-row-control">
         <!-- 已選定活動地點資訊卡片 -->
         <div v-if="selectedGooglePark" class="selected-google-park-card">
           <div class="selected-google-park-card__header">
@@ -212,21 +214,23 @@ function saveCustomMeeting() {
     </div>
 
     <!-- 4. 集合地點選擇 (統一 Auto Layout 輸入框規格) -->
-    <div
-      class="schedule-direct-row schedule-direct-row--meeting"
-      role="button"
-      tabindex="0"
-      aria-label="選擇集合地點"
-      aria-controls="create-meeting-picker"
-      :aria-expanded="openPicker === 'meeting'"
-      @click="togglePicker('meeting')"
-      @keydown.enter="togglePicker('meeting')"
-      @keydown.space.prevent="togglePicker('meeting')"
-    >
-      <UsersRound :size="22" class="schedule-direct-icon" aria-hidden="true" />
-      <div class="schedule-direct-body">
-        <span class="schedule-field-label">集合地點</span>
-        <div class="schedule-fake-input" :class="{ 'is-active': openPicker === 'meeting' }">
+    <div class="schedule-card-row schedule-card-row--meeting" aria-label="選擇集合地點">
+      <div class="schedule-row-header">
+        <UsersRound :size="18" class="schedule-row-icon" aria-hidden="true" />
+        <span class="schedule-row-title">集合地點</span>
+      </div>
+      <div class="schedule-row-control">
+        <div
+          class="schedule-fake-input"
+          role="button"
+          tabindex="0"
+          :class="{ 'is-active': openPicker === 'meeting' }"
+          aria-controls="create-meeting-picker"
+          :aria-expanded="openPicker === 'meeting'"
+          @click="togglePicker('meeting')"
+          @keydown.enter="togglePicker('meeting')"
+          @keydown.space.prevent="togglePicker('meeting')"
+        >
           <span class="schedule-fake-input__text">{{ meeting || '請先選擇活動地點或自訂集合處' }}</span>
           <ChevronRight :size="18" class="schedule-fake-input__icon" :class="{ 'is-rotated': openPicker === 'meeting' }" aria-hidden="true" />
         </div>
