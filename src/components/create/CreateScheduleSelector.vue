@@ -34,7 +34,15 @@ const parkSearchQuery = shallowRef('')
 const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
 
-const selectedGooglePark = shallowRef<SelectedParkResult | null>(null)
+const selectedGooglePark = shallowRef<SelectedParkResult | null>(
+  props.parkId
+    ? {
+        name: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.name || props.parkId,
+        address: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.address || '',
+        district: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.district || '台北市',
+      }
+    : null
+)
 
 const selectedPark = computed(() => {
   if (selectedGooglePark.value) {
@@ -57,6 +65,7 @@ function handleGoogleParkSelect(result: SelectedParkResult) {
 
 function clearSelectedPark() {
   selectedGooglePark.value = null
+  emit('update:parkId', '')
 }
 
 const meetingOptions = computed(() => Array.from(new Set([
@@ -162,42 +171,37 @@ function saveCustomMeeting() {
       </div>
     </div>
 
-    <!-- 3. 公園選擇 (手風琴按鈕) -->
-    <button
-      class="schedule-field schedule-field--wide"
-      type="button"
-      aria-label="選擇公園"
-      aria-controls="create-park-picker"
-      :aria-expanded="openPicker === 'park'"
-      @click="togglePicker('park')"
-    >
-      <MapPin :size="22" aria-hidden="true" />
-      <span><small>公園</small><strong>{{ selectedPark?.name }}</strong><em>{{ selectedPark?.district }}</em></span>
-      <ChevronRight :size="19" aria-hidden="true" />
-    </button>
-    <div v-show="openPicker === 'park'" id="create-park-picker" class="schedule-picker-panel" aria-label="選擇公園">
+    <!-- 3. 公園選擇 (直接顯示於介面，不需多一層收合) -->
+    <div class="create-park-container" style="margin: 18px 0;">
+      <div class="field-heading">
+        <strong>活動公園</strong>
+        <span>連線 Google 地圖搜尋全台</span>
+      </div>
+
       <!-- 已選定公園資訊卡片 -->
-      <div v-if="selectedGooglePark || parkId" class="selected-google-park-card" style="margin-bottom: 8px;">
+      <div v-if="selectedGooglePark" class="selected-google-park-card">
         <div class="selected-google-park-card__header">
           <span class="tag tag--success">✓ 已選定活動公園</span>
-          <button class="text-link" type="button" @click="clearSelectedPark">重新搜尋其他公園</button>
+          <button class="text-link" type="button" @click="clearSelectedPark">
+            重新搜尋其他公園
+          </button>
         </div>
         <div class="selected-google-park-card__body">
           <div class="selected-google-park-icon">
             <MapPin :size="22" />
           </div>
           <div class="selected-google-park-text">
-            <strong>{{ selectedPark?.name }}</strong>
-            <span v-if="selectedPark?.address">{{ selectedPark?.address }}</span>
-            <small v-if="selectedPark?.district">{{ selectedPark?.district }}</small>
+            <strong>{{ selectedGooglePark.name }}</strong>
+            <span v-if="selectedGooglePark.address">{{ selectedGooglePark.address }}</span>
+            <small v-if="selectedGooglePark.district">{{ selectedGooglePark.district }}</small>
           </div>
         </div>
       </div>
 
-      <!-- 未選定或重新搜尋時：Google Places 搜尋框 -->
-      <div v-else class="quick-park-search-panel">
+      <!-- 未選定或重新搜尋時：直接呈現 Google Places 搜尋框 -->
+      <div v-else class="direct-park-search-panel">
         <ParkAutocomplete
-          placeholder="搜尋全台公園（即時跳出選項）..."
+          placeholder="請輸入想舉辦活動的公園（例：青年公園、大安森林公園）..."
           :auto-focus="true"
           @select="handleGoogleParkSelect"
         />
