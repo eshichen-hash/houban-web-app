@@ -211,19 +211,27 @@ function saveCustomMeeting() {
       </div>
     </div>
 
-    <!-- 4. 集合地點選擇 (手風琴按鈕) -->
-    <button
-      class="schedule-field schedule-field--wide"
-      type="button"
+    <!-- 4. 集合地點選擇 (統一 Auto Layout 輸入框規格) -->
+    <div
+      class="schedule-direct-row schedule-direct-row--meeting"
+      role="button"
+      tabindex="0"
       aria-label="選擇集合地點"
       aria-controls="create-meeting-picker"
       :aria-expanded="openPicker === 'meeting'"
       @click="togglePicker('meeting')"
+      @keydown.enter="togglePicker('meeting')"
+      @keydown.space.prevent="togglePicker('meeting')"
     >
-      <UsersRound :size="22" aria-hidden="true" />
-      <span><span class="schedule-field-label">集合地點</span><strong>{{ meeting || '請先選擇活動地點或自訂集合處' }}</strong></span>
-      <ChevronRight :size="19" aria-hidden="true" />
-    </button>
+      <UsersRound :size="22" class="schedule-direct-icon" aria-hidden="true" />
+      <div class="schedule-direct-body">
+        <span class="schedule-field-label">集合地點</span>
+        <div class="schedule-fake-input" :class="{ 'is-active': openPicker === 'meeting' }">
+          <span class="schedule-fake-input__text">{{ meeting || '請先選擇活動地點或自訂集合處' }}</span>
+          <ChevronRight :size="18" class="schedule-fake-input__icon" :class="{ 'is-rotated': openPicker === 'meeting' }" aria-hidden="true" />
+        </div>
+      </div>
+    </div>
     <div v-show="openPicker === 'meeting'" id="create-meeting-picker" class="schedule-picker-panel" aria-label="選擇集合地點">
       <div class="schedule-choice-grid schedule-choice-grid--three">
         <button v-for="option in meetingOptions" :key="option" class="schedule-choice" :class="{ 'is-selected': meeting === option && !customMeetingOpen }" type="button" :aria-pressed="meeting === option && !customMeetingOpen" @click="selectMeeting(option)">{{ option }}</button>

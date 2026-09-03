@@ -1372,11 +1372,11 @@ html { scroll-padding-top: 96px; }
   transform: rotate(-180deg);
 }
 
-/* 活動地點區塊 Auto Layout & RWD */
+/* 活動行程區塊 Auto Layout & RWD */
 .schedule-direct-row {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 12px;
   padding: 14px 16px;
   background: rgba(255, 253, 248, 0.82);
@@ -1396,11 +1396,57 @@ html { scroll-padding-top: 96px; }
 }
 
 .schedule-direct-row--location {
-  align-items: start;
+  align-items: center;
 }
 
-.schedule-direct-row--location .schedule-direct-icon {
-  margin-top: 3px;
+.schedule-direct-row--meeting {
+  cursor: pointer;
+  user-select: none;
+}
+
+.schedule-fake-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 48px;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid #b9d0da;
+  border-radius: 14px;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.schedule-fake-input:hover,
+.schedule-fake-input.is-active {
+  border-color: #5b8d70;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(91, 141, 112, 0.15);
+}
+
+.schedule-fake-input__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--ink, #20343b);
+  text-align: left;
+}
+
+.schedule-fake-input__icon {
+  color: var(--ink-soft);
+  flex: 0 0 18px;
+  transition: transform 0.2s ease;
+}
+
+.schedule-fake-input__icon.is-rotated {
+  transform: rotate(90deg);
 }
 
 .direct-park-search-panel {
