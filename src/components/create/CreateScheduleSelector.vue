@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CalendarDays, ChevronRight, Clock3, History, Map, MapPin, Pencil, Search, UsersRound } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
+import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
 
 type PickerName = 'park' | 'meeting'
@@ -34,6 +35,16 @@ const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
 
 const selectedPark = computed(() => props.parks.find((park) => park.id === props.parkId) ?? props.parks[0])
+
+function handleGoogleParkSelect(result: SelectedParkResult) {
+  const existing = props.parks.find((p) => p.name.includes(result.name) || result.name.includes(p.name))
+  if (existing) {
+    selectPark(existing.id)
+  } else {
+    // 若為 Google 地圖新搜尋到的公園，加入現有列表或更新 parkId
+    selectPark(result.name)
+  }
+}
 
 const searchedParks = computed(() => {
   const q = parkSearchQuery.value.trim().toLowerCase()
@@ -218,15 +229,10 @@ function saveCustomMeeting() {
 
       <!-- 頁籤二：搜尋公園 -->
       <div v-show="parkTab === 'search'" class="quick-park-search-panel">
-        <div class="park-search-input-wrap">
-          <Search :size="18" class="park-search-icon" aria-hidden="true" />
-          <input
-            v-model.trim="parkSearchQuery"
-            type="text"
-            class="park-search-input"
-            placeholder="搜尋公園名稱或行政區..."
-          />
-        </div>
+        <ParkAutocomplete
+          placeholder="搜尋全台公園（即時跳出選項）..."
+          @select="handleGoogleParkSelect"
+        />
         <div class="quick-park-history-list" style="margin-top: 10px;">
           <button
             v-for="park in searchedParks"

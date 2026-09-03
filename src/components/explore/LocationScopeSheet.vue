@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Building2, LocateFixed, MapPin, Trees, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, reactive, useTemplateRef, watch } from 'vue'
+import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
 import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
 
@@ -40,6 +41,17 @@ function choosePark(park: Park) {
   draft.locationMode = 'park'
   draft.selectedParkId = park.id
   draft.location = park.district.replace('台北市', '')
+}
+
+function handleGoogleParkSelect(result: SelectedParkResult) {
+  const existing = props.parks.find((p) => p.name.includes(result.name) || result.name.includes(p.name))
+  if (existing) {
+    choosePark(existing)
+  } else {
+    draft.locationMode = 'park'
+    draft.selectedParkId = result.name
+    draft.location = result.district ? result.district.replace('台北市', '') : '台北市'
+  }
 }
 
 function handleDistrictChange(event: Event) {
@@ -158,15 +170,19 @@ onBeforeUnmount(() => {
           </label>
 
           <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
-            <legend>選擇公園</legend>
+            <legend>選擇或搜尋公園</legend>
+            <ParkAutocomplete
+              placeholder="搜尋想去的公園（即時跳出選項）..."
+              @select="handleGoogleParkSelect"
+            />
             <div class="park-option-list">
               <button
                 v-for="park in parks"
                 :key="park.id"
                 class="park-option"
-                :class="{ 'is-selected': draft.selectedParkId === park.id }"
+                :class="{ 'is-selected': draft.selectedParkId === park.id || draft.selectedParkId === park.name }"
                 type="button"
-                :aria-pressed="draft.selectedParkId === park.id"
+                :aria-pressed="draft.selectedParkId === park.id || draft.selectedParkId === park.name"
                 @click="choosePark(park)"
               >
                 <MapPin :size="20" aria-hidden="true" />

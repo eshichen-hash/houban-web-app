@@ -1194,5 +1194,48 @@ html { scroll-padding-top: 96px; }
 .notification-detail-item p { margin: 2px 0 0; color: var(--ink-soft); font-size: 0.85rem; line-height: 1.45; }
 .notification-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 
+/* Google Places Autocomplete 樣式客製化 */
+.pac-container {
+  border-radius: 16px;
+  margin-top: 6px;
+  box-shadow: 0 12px 32px rgba(33, 76, 105, 0.2);
+  border: 1px solid var(--line);
+  font-family: inherit;
+  z-index: 10000 !important;
+  background-color: #fffdf8;
+  padding: 6px 0;
+}
+
+.pac-item {
+  padding: 10px 16px;
+  font-size: 0.98rem;
+  color: var(--ink);
+  cursor: pointer;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+}
+
+.pac-item:hover, .pac-item-selected {
+  background-color: rgba(224, 242, 254, 0.6);
+}
+
+.pac-item-query {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #214c69;
+}
+
+.pac-matched {
+  font-weight: 900;
+  color: #e8892b;
+}
+
+.pac-icon {
+  margin-top: 2px;
+  margin-right: 8px;
+}
+
 
 
