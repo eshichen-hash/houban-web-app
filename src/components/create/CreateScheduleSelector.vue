@@ -34,28 +34,37 @@ const parkSearchQuery = shallowRef('')
 const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
 
-const selectedPark = computed(() => props.parks.find((park) => park.id === props.parkId) ?? props.parks[0])
+const selectedGooglePark = shallowRef<SelectedParkResult | null>(null)
+
+const selectedPark = computed(() => {
+  if (selectedGooglePark.value) {
+    return {
+      id: selectedGooglePark.value.name,
+      name: selectedGooglePark.value.name,
+      district: selectedGooglePark.value.district,
+      address: selectedGooglePark.value.address,
+      meeting: '公園主要入口處',
+    }
+  }
+  return props.parks.find((park) => park.id === props.parkId || park.name === props.parkId) ?? props.parks[0]
+})
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
-  const existing = props.parks.find((p) => p.name.includes(result.name) || result.name.includes(p.name))
-  if (existing) {
-    selectPark(existing.id)
-  } else {
-    // 若為 Google 地圖新搜尋到的公園，加入現有列表或更新 parkId
-    selectPark(result.name)
-  }
+  selectedGooglePark.value = result
+  emit('update:parkId', result.name)
+  emit('update:meeting', `${result.name}入口廣場`)
 }
 
-const searchedParks = computed(() => {
-  const q = parkSearchQuery.value.trim().toLowerCase()
-  if (!q) return props.parks
-  return props.parks.filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
-})
+function clearSelectedPark() {
+  selectedGooglePark.value = null
+}
 
 const meetingOptions = computed(() => Array.from(new Set([
   selectedPark.value?.meeting,
-  '公園入口',
-  '服務中心',
+  '公園入口處',
+  '捷運站出口旁',
+  '服務中心前',
+  '涼亭前廣場',
 ].filter((value): value is string => Boolean(value)))))
 
 function togglePicker(name: PickerName) {
@@ -167,108 +176,34 @@ function saveCustomMeeting() {
       <ChevronRight :size="19" aria-hidden="true" />
     </button>
     <div v-show="openPicker === 'park'" id="create-park-picker" class="schedule-picker-panel" aria-label="選擇公園">
-      <!-- 來源切換頁籤：最近／常去、搜尋、地圖 -->
-      <div class="place-source-tabs" role="tablist" aria-label="公園切換方式">
-        <button
-          class="place-source-tab"
-          :class="{ 'is-active': parkTab === 'history' }"
-          type="button"
-          role="tab"
-          :aria-selected="parkTab === 'history'"
-          @click="parkTab = 'history'"
-        >
-          <History :size="20" aria-hidden="true" />
-          <span>最近／常去</span>
-        </button>
-        <button
-          class="place-source-tab"
-          :class="{ 'is-active': parkTab === 'search' }"
-          type="button"
-          role="tab"
-          :aria-selected="parkTab === 'search'"
-          @click="parkTab = 'search'"
-        >
-          <Search :size="20" aria-hidden="true" />
-          <span>搜尋</span>
-        </button>
-        <button
-          class="place-source-tab"
-          :class="{ 'is-active': parkTab === 'map' }"
-          type="button"
-          role="tab"
-          :aria-selected="parkTab === 'map'"
-          @click="parkTab = 'map'"
-        >
-          <Map :size="20" aria-hidden="true" />
-          <span>地圖</span>
-        </button>
-      </div>
-
-      <!-- 頁籤一：最近／常去公園 -->
-      <div v-show="parkTab === 'history'" class="quick-park-history-panel">
-        <div class="quick-park-history-list" role="listbox" aria-label="歷史與常去公園">
-          <button
-            v-for="park in parks"
-            :key="park.id"
-            class="quick-park-history-item"
-            :class="{ 'is-selected': parkId === park.id }"
-            type="button"
-            role="option"
-            :aria-selected="parkId === park.id"
-            @click="selectPark(park.id)"
-          >
-            <History :size="20" class="quick-park-item-icon" aria-hidden="true" />
-            <span class="quick-park-item-text">
-              <strong>{{ park.name }}</strong>
-              <small>{{ park.district }}</small>
-            </span>
-            <span class="park-saved-tag">已保存</span>
-          </button>
+      <!-- 已選定公園資訊卡片 -->
+      <div v-if="selectedGooglePark || parkId" class="selected-google-park-card" style="margin-bottom: 8px;">
+        <div class="selected-google-park-card__header">
+          <span class="tag tag--success">✓ 已選定活動公園</span>
+          <button class="text-link" type="button" @click="clearSelectedPark">重新搜尋其他公園</button>
+        </div>
+        <div class="selected-google-park-card__body">
+          <div class="selected-google-park-icon">
+            <MapPin :size="22" />
+          </div>
+          <div class="selected-google-park-text">
+            <strong>{{ selectedPark?.name }}</strong>
+            <span v-if="selectedPark?.address">{{ selectedPark?.address }}</span>
+            <small v-if="selectedPark?.district">{{ selectedPark?.district }}</small>
+          </div>
         </div>
       </div>
 
-      <!-- 頁籤二：搜尋公園 -->
-      <div v-show="parkTab === 'search'" class="quick-park-search-panel">
+      <!-- 未選定或重新搜尋時：Google Places 搜尋框 -->
+      <div v-else class="quick-park-search-panel">
         <ParkAutocomplete
           placeholder="搜尋全台公園（即時跳出選項）..."
+          :auto-focus="true"
           @select="handleGoogleParkSelect"
         />
-        <div class="quick-park-history-list" style="margin-top: 10px;">
-          <button
-            v-for="park in searchedParks"
-            :key="park.id"
-            class="quick-park-history-item"
-            :class="{ 'is-selected': parkId === park.id }"
-            type="button"
-            @click="selectPark(park.id)"
-          >
-            <MapPin :size="20" class="quick-park-item-icon" aria-hidden="true" />
-            <span class="quick-park-item-text">
-              <strong>{{ park.name }}</strong>
-              <small>{{ park.address }}</small>
-            </span>
-            <span class="park-saved-tag">{{ parkId === park.id ? '已選擇' : '選擇' }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 頁籤三：地圖模式 -->
-      <div v-show="parkTab === 'map'" class="quick-park-map-panel">
-        <div class="create-map-demo" role="img" aria-label="公園位置示意地圖">
-          <span class="create-map-label">地圖找公園・原型示意</span>
-          <button
-            v-for="park in parks"
-            :key="park.id"
-            class="create-map-pin"
-            :class="{ 'is-active': parkId === park.id }"
-            type="button"
-            @click="selectPark(park.id)"
-          >
-            <MapPin :size="18" aria-hidden="true" />
-            <span class="create-map-pin-label">{{ park.name }}</span>
-          </button>
-        </div>
-        <p class="create-map-note">點選地圖上的公園即可帶入名稱；正式版可串接 Google Maps。</p>
+        <p class="google-places-helper" style="margin-top: 6px;">
+          💡 輸入公園名稱，系統將連線 Google Places API 即時為您搜尋全台灣所有公園。
+        </p>
       </div>
     </div>
 
