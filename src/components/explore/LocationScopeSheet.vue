@@ -10,6 +10,8 @@ interface PlaceSuggestion {
   mainText: string
   secondaryText: string
   fullText: string
+  lat?: number
+  lng?: number
 }
 
 const props = defineProps<{
@@ -114,6 +116,69 @@ async function initPlacesServices(): Promise<boolean> {
   return true
 }
 
+/**
+ * 全台灣即時地理位置連線搜尋（覆蓋全台 368 鄉鎮市區所有公園、綠地、地標與景點）
+ */
+async function searchTaiwanPlacesLive(text: string): Promise<PlaceSuggestion[]> {
+  try {
+    const encoded = encodeURIComponent(text)
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encoded}&limit=15&lat=23.7&lon=120.9&lang=default`)
+    if (res.ok) {
+      const data = await res.json()
+      if (Array.isArray(data?.features) && data.features.length > 0) {
+        return data.features
+          .filter((f: any) => f.properties?.name)
+          .map((f: any, idx: number) => {
+            const props = f.properties
+            const city = props.city || props.county || props.state || ''
+            const district = props.district || props.suburb || props.town || ''
+            const street = props.street || ''
+            const fullAddress = [city, district, street].filter(Boolean).join('') || '台灣'
+            return {
+              placeId: `live-photon-${idx}-${props.osm_id || Date.now()}`,
+              mainText: props.name,
+              secondaryText: fullAddress,
+              fullText: `${fullAddress} ${props.name}`,
+              lat: f.geometry?.coordinates?.[1],
+              lng: f.geometry?.coordinates?.[0],
+            }
+          })
+      }
+    }
+  } catch (err) {
+    console.warn('即時地點連線搜尋失敗:', err)
+  }
+
+  try {
+    const encoded = encodeURIComponent(text)
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=tw&addressdetails=1&limit=12`)
+    if (res.ok) {
+      const list = await res.json()
+      if (Array.isArray(list) && list.length > 0) {
+        return list.map((item: any) => {
+          const addr = item.address || {}
+          const city = addr.city || addr.county || ''
+          const sub = addr.suburb || addr.district || addr.town || addr.village || ''
+          const road = addr.road || ''
+          const fullAddress = [city, sub, road].filter(Boolean).join('') || item.display_name
+          return {
+            placeId: `live-osm-${item.place_id}`,
+            mainText: item.name || (item.display_name ? item.display_name.split(',')[0] : text),
+            secondaryText: fullAddress,
+            fullText: item.display_name,
+            lat: parseFloat(item.lat),
+            lng: parseFloat(item.lon),
+          }
+        })
+      }
+    }
+  } catch (err) {
+    console.warn('Nominatim 即時搜尋失敗:', err)
+  }
+
+  return []
+}
+
 async function fetchOverlaySuggestions(val: string) {
   const text = val.trim()
   if (!text) {
@@ -125,46 +190,39 @@ async function fetchOverlaySuggestions(val: string) {
   isSearchingPlaces.value = true
 
   const isReady = await initPlacesServices()
-  if (!isReady || !autocompleteService) {
-    overlaySuggestions.value = props.parks
-      .filter((p) => p.name.includes(text) || p.district.includes(text) || p.address.includes(text))
-      .map((p) => ({
-        placeId: p.id,
-        mainText: p.name,
-        secondaryText: p.address,
-        fullText: `${p.district} ${p.name}`,
-      }))
-    isSearchingPlaces.value = false
+
+  // 1. 若 Google Places SDK 就緒，透過 Google Places API 搜尋全台
+  if (isReady && autocompleteService) {
+    const request = {
+      input: text,
+      componentRestrictions: { country: 'tw' },
+      sessionToken,
+      language: 'zh-TW',
+    }
+
+    autocompleteService.getPlacePredictions(request, async (predictions: any, status: any) => {
+      if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
+        isSearchingPlaces.value = false
+        overlaySuggestions.value = predictions.map((p: any) => ({
+          placeId: p.place_id,
+          mainText: p.structured_formatting?.main_text || p.description,
+          secondaryText: p.structured_formatting?.secondary_text || '',
+          fullText: p.description,
+        }))
+      } else {
+        // 若 Google Places 無精確回傳，連線全台即時地理搜尋引擎
+        const liveResults = await searchTaiwanPlacesLive(text)
+        isSearchingPlaces.value = false
+        overlaySuggestions.value = liveResults
+      }
+    })
     return
   }
 
-  const request = {
-    input: text,
-    componentRestrictions: { country: 'tw' },
-    sessionToken,
-    language: 'zh-TW',
-  }
-
-  autocompleteService.getPlacePredictions(request, (predictions: any, status: any) => {
-    isSearchingPlaces.value = false
-    if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-      overlaySuggestions.value = predictions.map((p: any) => ({
-        placeId: p.place_id,
-        mainText: p.structured_formatting?.main_text || p.description,
-        secondaryText: p.structured_formatting?.secondary_text || '',
-        fullText: p.description,
-      }))
-    } else {
-      overlaySuggestions.value = props.parks
-        .filter((p) => p.name.includes(text) || p.district.includes(text) || p.address.includes(text))
-        .map((p) => ({
-          placeId: p.id,
-          mainText: p.name,
-          secondaryText: p.address,
-          fullText: `${p.district} ${p.name}`,
-        }))
-    }
-  })
+  // 2. 若 Google Places SDK 尚未載入，直接連線全台即時地理搜尋引擎
+  const liveResults = await searchTaiwanPlacesLive(text)
+  isSearchingPlaces.value = false
+  overlaySuggestions.value = liveResults
 }
 
 function handleOverlayInput(e: Event) {
@@ -177,50 +235,63 @@ function handleOverlayInput(e: Event) {
 }
 
 function handleOverlaySelect(item: PlaceSuggestion) {
-  if (!placesService || !item.placeId) {
-    const existing = props.parks.find((p) => p.id === item.placeId || p.name === item.mainText)
+  // 1. 若已經有即時座標 (例如來自全台即時地理搜尋)
+  if (typeof item.lat === 'number' && typeof item.lng === 'number') {
     const result: SelectedParkResult = {
       name: item.mainText,
-      address: item.secondaryText || existing?.address || '',
-      district: existing?.district || '',
-      lat: existing?.lat,
-      lng: existing?.lng,
+      address: item.secondaryText,
+      district: item.secondaryText,
+      lat: item.lat,
+      lng: item.lng,
     }
     handleGoogleParkSelect(result)
     closeDedicatedSearch()
     return
   }
 
-  placesService.getDetails(
-    { placeId: item.placeId, fields: ['name', 'formatted_address', 'geometry', 'address_components'], sessionToken },
-    (place: any, status: any) => {
-      let city = ''
-      let sublocality = ''
-      if (place?.address_components) {
-        const cityComp = place.address_components.find((c: any) =>
-          c.types.includes('administrative_area_level_1')
-        )
-        const subComp = place.address_components.find((c: any) =>
-          c.types.includes('administrative_area_level_3') || c.types.includes('sublocality_level_1')
-        )
-        if (cityComp) city = cityComp.long_name
-        if (subComp) sublocality = subComp.long_name
+  // 2. 若為 Google Places placeId，請求詳細資料取得經緯度與行政區
+  if (placesService && item.placeId) {
+    placesService.getDetails(
+      { placeId: item.placeId, fields: ['name', 'formatted_address', 'geometry', 'address_components'], sessionToken },
+      (place: any, status: any) => {
+        let city = ''
+        let sublocality = ''
+        if (place?.address_components) {
+          const cityComp = place.address_components.find((c: any) =>
+            c.types.includes('administrative_area_level_1')
+          )
+          const subComp = place.address_components.find((c: any) =>
+            c.types.includes('administrative_area_level_3') || c.types.includes('sublocality_level_1')
+          )
+          if (cityComp) city = cityComp.long_name
+          if (subComp) sublocality = subComp.long_name
+        }
+
+        const displayDistrict = (city + sublocality) || sublocality || city || place?.formatted_address || item.mainText
+
+        const result: SelectedParkResult = {
+          name: place?.name || item.mainText,
+          address: place?.formatted_address || item.secondaryText,
+          district: displayDistrict,
+          lat: place?.geometry?.location?.lat ? place.geometry.location.lat() : undefined,
+          lng: place?.geometry?.location?.lng ? place.geometry.location.lng() : undefined,
+        }
+
+        handleGoogleParkSelect(result)
+        closeDedicatedSearch()
       }
+    )
+    return
+  }
 
-      const displayDistrict = (city + sublocality) || sublocality || city || place?.formatted_address || item.mainText
-
-      const result: SelectedParkResult = {
-        name: place?.name || item.mainText,
-        address: place?.formatted_address || item.secondaryText,
-        district: displayDistrict,
-        lat: place?.geometry?.location?.lat ? place.geometry.location.lat() : undefined,
-        lng: place?.geometry?.location?.lng ? place.geometry.location.lng() : undefined,
-      }
-
-      handleGoogleParkSelect(result)
-      closeDedicatedSearch()
-    }
-  )
+  // 3. 一般回退
+  const result: SelectedParkResult = {
+    name: item.mainText,
+    address: item.secondaryText,
+    district: item.secondaryText,
+  }
+  handleGoogleParkSelect(result)
+  closeDedicatedSearch()
 }
 
 async function openDedicatedSearch() {
@@ -458,7 +529,7 @@ onBeforeUnmount(() => {
               </div>
               <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
                 <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
-                <span>{{ isLocating ? '正在取得 GPS 定位...' : `使用我目前的 GPS 位置（已定位：${draft.location || '大安區'}）` }}</span>
+                <span>{{ isLocating ? '正在取得 GPS 定位...' : (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? `已定位：${draft.location}` : '使用我目前的 GPS 位置') }}</span>
               </button>
             </div>
           </fieldset>
@@ -526,7 +597,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="search-overlay-gps-text">
               <strong>使用我目前的 GPS 位置</strong>
-              <small>已定位：{{ draft.location || '大安區' }}</small>
+              <small>{{ isLocating ? '正在取得 GPS 定位...' : (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? `已定位：${draft.location}` : '點擊取得當前所在位置') }}</small>
             </div>
           </button>
         </div>
