@@ -35,6 +35,7 @@ let previousFocus: HTMLElement | null = null
 let previousBodyOverflow = ''
 
 const selectedParkData = ref<SelectedParkResult | null>(null)
+const isLocating = ref(false)
 
 function syncDraft() {
   Object.assign(draft, props.scope)
@@ -60,13 +61,73 @@ function syncDraft() {
   }
 }
 
+async function detectCurrentLocation() {
+  if (!navigator.geolocation) {
+    draft.location = '大安區'
+    return
+  }
+
+  isLocating.value = true
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      const lat = position.coords.latitude
+      const lng = position.coords.longitude
+
+      let foundDistrict = ''
+
+      // 1. 若 Google Maps SDK 已就緒，使用 Google Geocoder 進行反向地理編碼
+      if (window.google?.maps?.Geocoder) {
+        try {
+          const geocoder = new window.google.maps.Geocoder()
+          const response = await geocoder.geocode({ location: { lat, lng } })
+          if (response?.results?.[0]?.address_components) {
+            const sublocality = response.results[0].address_components.find((c: any) =>
+              c.types.includes('sublocality_level_1') || c.types.includes('administrative_area_level_3')
+            )
+            if (sublocality) {
+              foundDistrict = sublocality.long_name.replace('台北市', '')
+            }
+          }
+        } catch (err) {
+          console.warn('Google Geocoder 反向編碼失敗:', err)
+        }
+      }
+
+      // 2. 網絡備援反向編碼
+      if (!foundDistrict) {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`)
+          const data = await res.json()
+          if (data?.address) {
+            foundDistrict = data.address.suburb || data.address.district || data.address.city_district || '大安區'
+          }
+        } catch {
+          foundDistrict = '大安區'
+        }
+      }
+
+      draft.location = foundDistrict || '大安區'
+      isLocating.value = false
+    },
+    (error) => {
+      console.warn('瀏覽器 GPS 定位失敗:', error)
+      isLocating.value = false
+      draft.location = '大安區'
+    },
+    { enableHighAccuracy: true, timeout: 7000 }
+  )
+}
+
 function chooseMode(mode: ExploreLocationMode) {
   draft.locationMode = mode
   if (mode !== 'park') {
     draft.selectedParkId = null
     selectedParkData.value = null
   }
-  if (mode === 'current') draft.location = '大安區'
+  if (mode === 'current') {
+    detectCurrentLocation()
+  }
 }
 
 function clearSelectedGooglePark() {
@@ -177,8 +238,8 @@ onBeforeUnmount(() => {
             <legend>從哪裡開始找？</legend>
             <div class="scope-mode-grid">
               <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'current' }" type="button" :aria-pressed="draft.locationMode === 'current'" @click="chooseMode('current')">
-                <LocateFixed :size="22" aria-hidden="true" />
-                <span><strong>目前位置</strong><small>已定位：大安區</small></span>
+                <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+                <span><strong>目前位置</strong><small>{{ isLocating ? '正在取得 GPS 定位...' : `已定位：${draft.location || '大安區'}` }}</small></span>
               </button>
               <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'district' }" type="button" :aria-pressed="draft.locationMode === 'district'" @click="chooseMode('district')">
                 <Building2 :size="22" aria-hidden="true" />
