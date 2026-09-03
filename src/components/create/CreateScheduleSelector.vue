@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarDays, ChevronRight, Clock3, History, Map, MapPin, Pencil, Search, UsersRound } from 'lucide-vue-next'
+import { CalendarDays, ChevronRight, Clock3, History, Map, MapPin, Pencil, RotateCcw, Search, UsersRound } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
@@ -171,43 +171,47 @@ function saveCustomMeeting() {
       </div>
     </div>
 
-    <!-- 3. 公園選擇 (直接顯示於介面，不需多一層收合) -->
-    <div class="create-park-container" style="margin: 18px 0;">
-      <div class="field-heading">
-        <strong>活動公園</strong>
-        <span>連線 Google 地圖搜尋全台</span>
-      </div>
-
-      <!-- 已選定公園資訊卡片 -->
-      <div v-if="selectedGooglePark" class="selected-google-park-card">
-        <div class="selected-google-park-card__header">
-          <span class="tag tag--success">✓ 已選定活動公園</span>
-          <button class="text-link" type="button" @click="clearSelectedPark">
-            重新搜尋其他公園
-          </button>
+    <!-- 3. 活動地點選擇 (直接顯示於介面，自動適應 RWD Auto Layout) -->
+    <div class="schedule-direct-row schedule-direct-row--location" aria-label="選擇活動地點">
+      <MapPin :size="22" class="schedule-direct-icon" aria-hidden="true" />
+      <div class="schedule-direct-body">
+        <div class="field-heading">
+          <strong>活動地點</strong>
+          <span>連線 Google 地圖搜尋全台</span>
         </div>
-        <div class="selected-google-park-card__body">
-          <div class="selected-google-park-icon">
-            <MapPin :size="22" />
+
+        <!-- 已選定活動地點資訊卡片 -->
+        <div v-if="selectedGooglePark" class="selected-google-park-card">
+          <div class="selected-google-park-card__header">
+            <span class="tag tag--success">✓ 已選定活動地點</span>
+            <button class="btn-re-search" type="button" @click="clearSelectedPark">
+              <RotateCcw :size="14" aria-hidden="true" />
+              <span>重新搜尋其他地點</span>
+            </button>
           </div>
-          <div class="selected-google-park-text">
-            <strong>{{ selectedGooglePark.name }}</strong>
-            <span v-if="selectedGooglePark.address">{{ selectedGooglePark.address }}</span>
-            <small v-if="selectedGooglePark.district">{{ selectedGooglePark.district }}</small>
+          <div class="selected-google-park-card__body">
+            <div class="selected-google-park-icon">
+              <MapPin :size="22" />
+            </div>
+            <div class="selected-google-park-text">
+              <strong>{{ selectedGooglePark.name }}</strong>
+              <span v-if="selectedGooglePark.address">{{ selectedGooglePark.address }}</span>
+              <small v-if="selectedGooglePark.district">{{ selectedGooglePark.district }}</small>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 未選定或重新搜尋時：直接呈現 Google Places 搜尋框 -->
-      <div v-else class="direct-park-search-panel">
-        <ParkAutocomplete
-          placeholder="請輸入想舉辦活動的公園（例：青年公園、大安森林公園）..."
-          :auto-focus="true"
-          @select="handleGoogleParkSelect"
-        />
-        <p class="google-places-helper" style="margin-top: 6px;">
-          💡 輸入公園名稱，系統將連線 Google Places API 即時為您搜尋全台灣所有公園。
-        </p>
+        <!-- 預設未選定時：直接呈現空白 Google Places 搜尋框 -->
+        <div v-else class="direct-park-search-panel">
+          <ParkAutocomplete
+            placeholder="請輸入想舉辦活動的地點（例：青年公園、大安森林公園）..."
+            :auto-focus="false"
+            @select="handleGoogleParkSelect"
+          />
+          <p class="google-places-helper">
+            💡 輸入地點或公園名稱，系統將連線 Google Places API 即時為您搜尋全台灣所有地點。
+          </p>
+        </div>
       </div>
     </div>
 

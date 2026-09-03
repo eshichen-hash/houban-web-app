@@ -54,14 +54,25 @@ export function useCreateEventDraft() {
     isoDate: todayIso,
     time: '09:00',
     endTime: '10:00',
-    parkId: parks[0]?.id ?? '',
-    meeting: parks[0]?.meeting ?? '公園入口',
+    parkId: '',
+    meeting: '',
     audience: '',
     items: '',
     image: '',
   })
 
-  const selectedPark = computed(() => parks.find((park) => park.id === form.parkId) ?? parks[0])
+  const selectedPark = computed(() => {
+    if (!form.parkId) return null
+    return parks.find((park) => park.id === form.parkId || park.name === form.parkId) ?? {
+      id: form.parkId,
+      name: form.parkId,
+      district: '全台',
+      address: form.parkId,
+      meeting: `${form.parkId}入口廣場`,
+      lat: 25.033,
+      lng: 121.535,
+    }
+  })
   const dateLabel = computed(() => {
     const date = formatCalendarDate(form.isoDate)
     if (form.isoDate === todayIso) return `今天・${date}`
@@ -70,13 +81,15 @@ export function useCreateEventDraft() {
   })
   const timeLabel = computed(() => formatTimeRange(form.time, form.endTime))
   const generatedName = computed(() => {
-    if (!form.type || !selectedPark.value) return ''
+    if (!form.type) return ''
+    const locationName = selectedPark.value?.name || ''
     const activityName = form.type === '健走' ? '晨間健走' : `一起${form.type}`
-    return `${selectedPark.value.name}・${activityName}`
+    return locationName ? `${locationName}・${activityName}` : activityName
   })
   const generatedIntro = computed(() => {
-    if (!form.type || !selectedPark.value) return ''
-    return `在${selectedPark.value.name}進行${form.difficulty}${form.type}，歡迎一起參加。`
+    if (!form.type) return ''
+    const locationName = selectedPark.value?.name || '公園'
+    return `在${locationName}進行${form.difficulty}${form.type}，歡迎一起參加。`
   })
   const displayName = computed(() => form.name.trim() || generatedName.value)
   const canCreate = computed(() => Boolean(form.type && displayName.value && selectedPark.value && form.meeting.trim()))
