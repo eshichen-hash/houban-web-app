@@ -14,13 +14,15 @@ interface StoredState {
   radius: ExploreRadius
   locationMode: ExploreLocationMode
   selectedParkId: string | null
+  centerCoords?: { lat: number; lng: number } | null
 }
 
 const state = reactive({
-  location: '大安區',
+  location: '目前位置',
   radius: 3 as ExploreRadius,
   locationMode: 'current' as ExploreLocationMode,
   selectedParkId: null as string | null,
+  centerCoords: null as { lat: number; lng: number } | null,
   dateFilter: 'today' as DateFilter,
   interest: '全部' as EventType | '全部',
   customDate: null as string | null,
@@ -44,12 +46,33 @@ function hydrateState() {
     if (stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10) state.radius = stored.radius
     if (stored.locationMode === 'current' || stored.locationMode === 'district' || stored.locationMode === 'park') state.locationMode = stored.locationMode
     if (typeof stored.selectedParkId === 'string' || stored.selectedParkId === null) state.selectedParkId = stored.selectedParkId
+    if (stored.centerCoords && typeof stored.centerCoords.lat === 'number' && typeof stored.centerCoords.lng === 'number') {
+      state.centerCoords = stored.centerCoords
+    }
   } catch {
     // 本地資料損壞時回到乾淨的示意狀態，不阻擋使用者繼續操作。
   }
 }
 
 hydrateState()
+
+// 初次載入若沒有自訂座標，嘗試背景觸發一次瀏覽器 GPS
+if (typeof window !== 'undefined' && navigator.geolocation && !state.centerCoords) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      if (state.locationMode === 'current' && (!state.centerCoords || state.location === '目前位置')) {
+        state.centerCoords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }
+      }
+    },
+    () => {
+      // 忽略定位拒絕
+    },
+    { enableHighAccuracy: true, timeout: 5000 }
+  )
+}
 
 const activeEvents = computed(() => [...eventSeed, ...state.createdEvents])
 
@@ -98,6 +121,7 @@ export function useAppState() {
     state.location = scope.location
     state.radius = scope.radius
     state.selectedParkId = scope.locationMode === 'park' ? scope.selectedParkId : null
+    state.centerCoords = scope.centerCoords ?? null
   }
 
   function registerEvent(id: string) {
@@ -156,5 +180,6 @@ watch(state, (value) => {
     radius: value.radius,
     locationMode: value.locationMode,
     selectedParkId: value.selectedParkId,
+    centerCoords: value.centerCoords,
   }))
 }, { deep: true })

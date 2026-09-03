@@ -182,7 +182,7 @@ function handleOverlaySelect(item: PlaceSuggestion) {
     const result: SelectedParkResult = {
       name: item.mainText,
       address: item.secondaryText || existing?.address || '',
-      district: existing?.district || '台北市',
+      district: existing?.district || '',
       lat: existing?.lat,
       lng: existing?.lng,
     }
@@ -194,18 +194,25 @@ function handleOverlaySelect(item: PlaceSuggestion) {
   placesService.getDetails(
     { placeId: item.placeId, fields: ['name', 'formatted_address', 'geometry', 'address_components'], sessionToken },
     (place: any, status: any) => {
-      let district = ''
+      let city = ''
+      let sublocality = ''
       if (place?.address_components) {
-        const sub = place.address_components.find((c: any) =>
+        const cityComp = place.address_components.find((c: any) =>
+          c.types.includes('administrative_area_level_1')
+        )
+        const subComp = place.address_components.find((c: any) =>
           c.types.includes('administrative_area_level_3') || c.types.includes('sublocality_level_1')
         )
-        if (sub) district = sub.long_name
+        if (cityComp) city = cityComp.long_name
+        if (subComp) sublocality = subComp.long_name
       }
+
+      const displayDistrict = (city + sublocality) || sublocality || city || place?.formatted_address || item.mainText
 
       const result: SelectedParkResult = {
         name: place?.name || item.mainText,
         address: place?.formatted_address || item.secondaryText,
-        district: district || '台北市',
+        district: displayDistrict,
         lat: place?.geometry?.location?.lat ? place.geometry.location.lat() : undefined,
         lng: place?.geometry?.location?.lng ? place.geometry.location.lng() : undefined,
       }
@@ -238,7 +245,7 @@ function selectGpsAndClose() {
 
 async function detectCurrentLocation() {
   if (!navigator.geolocation) {
-    draft.location = '大安區'
+    if (!draft.location || draft.location === '大安區') draft.location = '目前位置'
     return
   }
 
@@ -256,12 +263,14 @@ async function detectCurrentLocation() {
           const geocoder = new window.google.maps.Geocoder()
           const response = await geocoder.geocode({ location: { lat, lng } })
           if (response?.results?.[0]?.address_components) {
-            const sublocality = response.results[0].address_components.find((c: any) =>
+            const comps = response.results[0].address_components
+            const cityComp = comps.find((c: any) => c.types.includes('administrative_area_level_1'))
+            const subComp = comps.find((c: any) =>
               c.types.includes('sublocality_level_1') || c.types.includes('administrative_area_level_3')
             )
-            if (sublocality) {
-              foundDistrict = sublocality.long_name.replace('台北市', '')
-            }
+            const city = cityComp ? cityComp.long_name : ''
+            const sub = subComp ? subComp.long_name : ''
+            foundDistrict = (city + sub) || sub || city
           }
         } catch (err) {
           console.warn('Google Geocoder 反向編碼失敗:', err)
@@ -273,23 +282,26 @@ async function detectCurrentLocation() {
           const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`)
           const data = await res.json()
           if (data?.address) {
-            foundDistrict = data.address.suburb || data.address.district || data.address.city_district || '大安區'
+            const city = data.address.city || data.address.county || ''
+            const sub = data.address.suburb || data.address.district || data.address.city_district || data.address.town || ''
+            foundDistrict = (city + sub) || sub || city || '目前位置'
           }
         } catch {
-          foundDistrict = '大安區'
+          foundDistrict = '目前位置'
         }
       }
 
-      draft.location = foundDistrict || '大安區'
+      draft.location = foundDistrict || '目前位置'
       draft.locationMode = 'current'
       draft.selectedParkId = null
+      draft.centerCoords = { lat, lng }
       selectedParkData.value = null
       isLocating.value = false
     },
     (error) => {
       console.warn('瀏覽器 GPS 定位失敗:', error)
       isLocating.value = false
-      draft.location = '大安區'
+      if (!draft.location || draft.location === '大安區') draft.location = '目前位置'
       draft.locationMode = 'current'
       draft.selectedParkId = null
       selectedParkData.value = null
@@ -312,7 +324,10 @@ function handleGoogleParkSelect(result: SelectedParkResult) {
   selectedParkData.value = result
   draft.locationMode = 'park'
   draft.selectedParkId = result.name
-  draft.location = result.district ? result.district.replace('台北市', '') : result.name
+  draft.location = result.district || result.name
+  if (typeof result.lat === 'number' && typeof result.lng === 'number') {
+    draft.centerCoords = { lat: result.lat, lng: result.lng }
+  }
 }
 
 function applyScope() {

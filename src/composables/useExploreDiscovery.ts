@@ -11,15 +11,45 @@ function matchesDate(event: EventItem, dateFilter: DateFilter, customDate: strin
   return event.dateKey === dateFilter
 }
 
+function computeHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371 // 地球半徑 (公里)
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLon = (lon2 - lon1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
 function matchesScope(event: EventItem, scope: ExploreScope) {
+  // 1. 若為選定特定公園名稱且精確符合，優先視為 0 公里直接符合
   if (scope.locationMode === 'park' && scope.selectedParkId) {
-    return event.park.id === scope.selectedParkId
+    if (event.park.id === scope.selectedParkId || event.park.name === scope.selectedParkId) {
+      return true
+    }
   }
 
-  if (scope.locationMode === 'district') {
-    return event.park.district.endsWith(scope.location) && (event.distanceKm ?? 0) <= scope.radius
+  // 2. 若有中心點座標 (centerCoords) 且活動公園也有座標 (lat, lng)，使用球面距離精準過濾全台活動
+  if (scope.centerCoords && typeof scope.centerCoords.lat === 'number' && typeof scope.centerCoords.lng === 'number') {
+    if (typeof event.park.lat === 'number' && typeof event.park.lng === 'number') {
+      const dist = computeHaversineDistanceKm(
+        scope.centerCoords.lat,
+        scope.centerCoords.lng,
+        event.park.lat,
+        event.park.lng
+      )
+      return dist <= scope.radius
+    }
   }
 
+  // 3. 若為指定公園模式
+  if (scope.locationMode === 'park' && scope.selectedParkId) {
+    return event.park.id === scope.selectedParkId || event.park.name === scope.selectedParkId
+  }
+
+  // 4. 回退至預設相對距離
   return (event.distanceKm ?? 0) <= scope.radius
 }
 
@@ -50,6 +80,7 @@ export function useExploreDiscovery() {
     location: state.location,
     radius: state.radius,
     selectedParkId: state.selectedParkId,
+    centerCoords: state.centerCoords,
   }))
 
   const appliedFilters = computed<ExploreFilters>(() => ({
@@ -75,9 +106,9 @@ export function useExploreDiscovery() {
 
   const scopeSummary = computed(() => {
     if (state.locationMode === 'park' && state.selectedParkId) {
-      return parks.find((park) => park.id === state.selectedParkId)?.name ?? state.location
+      return parks.find((park) => park.id === state.selectedParkId)?.name ?? state.selectedParkId
     }
-    return state.location
+    return state.location || '目前位置'
   })
 
   const dateLabel = computed(() => {

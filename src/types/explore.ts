@@ -8,6 +8,7 @@ export interface ExploreScope {
   location: string
   radius: ExploreRadius
   selectedParkId: string | null
+  centerCoords?: { lat: number; lng: number } | null
 }
 
 export interface ExploreFilters {
