@@ -199,13 +199,13 @@ onBeforeUnmount(() => {
           </label>
 
           <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
-            <legend>Google 地圖即時搜尋公園</legend>
+            <legend>搜尋地點或公園</legend>
 
             <!-- 已選定公園資訊卡片 -->
             <div v-if="selectedParkData || draft.selectedParkId" class="selected-google-park-card">
               <div class="selected-google-park-card__header">
-                <span class="tag tag--success">✓ 已選定公園</span>
-                <button class="text-link" type="button" @click="clearSelectedGooglePark">重新搜尋其他公園</button>
+                <span class="tag tag--success">✓ 已選定地點</span>
+                <button class="text-link" type="button" @click="clearSelectedGooglePark">重新搜尋其他地點</button>
               </div>
               <div class="selected-google-park-card__body">
                 <div class="selected-google-park-icon">
@@ -219,17 +219,14 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 未選定時：顯示即時 Google Places 搜尋框 -->
+            <!-- 未選定時：顯示即時搜尋框 -->
             <div v-else>
               <ParkAutocomplete
                 v-model="searchQuery"
-                placeholder="請輸入想去的公園（例：青年公園、大安森林公園）..."
+                placeholder="輸入地點或公園名稱"
                 :auto-focus="true"
                 @select="handleGoogleParkSelect"
               />
-              <p class="google-places-helper">
-                💡 輸入公園名稱，系統將直接連線 Google 地圖即時為您搜尋全台公園。
-              </p>
             </div>
           </fieldset>
 

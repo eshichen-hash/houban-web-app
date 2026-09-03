@@ -30,7 +30,7 @@ const props = withDefaults(
     autoFocus?: boolean
   }>(),
   {
-    placeholder: '請輸入想搜尋的公園（例：青年公園、大安森林公園、花博）...',
+    placeholder: '輸入地點或公園名稱',
     modelValue: '',
     autoFocus: false,
   }

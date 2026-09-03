@@ -175,10 +175,9 @@ function saveCustomMeeting() {
     <div class="schedule-direct-row schedule-direct-row--location" aria-label="選擇活動地點">
       <MapPin :size="22" class="schedule-direct-icon" aria-hidden="true" />
       <div class="schedule-direct-body">
-        <div class="schedule-field-label-group">
-          <span class="schedule-field-label">活動地點</span>
-          <small>連線 Google 地圖搜尋全台</small>
-        </div>
+        <label class="schedule-field-label">
+          活動地點
+        </label>
 
         <!-- 已選定活動地點資訊卡片 -->
         <div v-if="selectedGooglePark" class="selected-google-park-card">
@@ -201,16 +200,13 @@ function saveCustomMeeting() {
           </div>
         </div>
 
-        <!-- 預設未選定時：直接呈現空白 Google Places 搜尋框 -->
+        <!-- 預設未選定時：直接呈現空白搜尋框 -->
         <div v-else class="direct-park-search-panel">
           <ParkAutocomplete
-            placeholder="請輸入想舉辦活動的地點（例：青年公園、大安森林公園）..."
+            placeholder="輸入地點或公園名稱"
             :auto-focus="false"
             @select="handleGoogleParkSelect"
           />
-          <p class="google-places-helper">
-            💡 輸入地點或公園名稱，系統將連線 Google Places API 即時為您搜尋全台灣所有地點。
-          </p>
         </div>
       </div>
     </div>
