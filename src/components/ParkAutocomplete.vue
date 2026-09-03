@@ -367,19 +367,19 @@ watch(
   min-width: 0;
   box-sizing: border-box;
   min-height: 48px;
-  background: var(--paper, #ffffff);
-  border: 1.5px solid var(--line, #b9d0da);
-  border-radius: var(--radius-control, 14px);
-  padding: 0 10px;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid #b9d0da;
+  border-radius: 14px;
+  padding: 0 12px;
+  box-shadow: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .park-autocomplete-input-box:focus-within,
 .park-autocomplete-input-box.is-active {
-  border-color: #214c69;
+  border-color: #5b8d70;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(33, 76, 105, 0.15);
+  box-shadow: 0 0 0 3px rgba(91, 141, 112, 0.15);
 }
 
 .search-icon {
