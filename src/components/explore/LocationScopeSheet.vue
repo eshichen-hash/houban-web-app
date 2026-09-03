@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Building2, LocateFixed, MapPin, Trees, X } from 'lucide-vue-next'
+import { LocateFixed, MapPin, Trees, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
 import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
@@ -19,7 +19,6 @@ const emit = defineEmits<{
 }>()
 
 const panel = useTemplateRef<HTMLElement>('panel')
-const districtOptions = ['大安區', '中正區', '信義區']
 const radiusOptions: ExploreRadius[] = [1, 3, 5, 10]
 const draft = reactive<ExploreScope>({ ...props.scope })
 const searchQuery = ref('')
@@ -241,23 +240,12 @@ onBeforeUnmount(() => {
                 <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
                 <span><strong>目前位置</strong><small>{{ isLocating ? '正在取得 GPS 定位...' : `已定位：${draft.location || '大安區'}` }}</small></span>
               </button>
-              <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'district' }" type="button" :aria-pressed="draft.locationMode === 'district'" @click="chooseMode('district')">
-                <Building2 :size="22" aria-hidden="true" />
-                <span><strong>選擇行政區</strong><small>從熟悉區域開始</small></span>
-              </button>
               <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'park' }" type="button" :aria-pressed="draft.locationMode === 'park'" @click="chooseMode('park')">
                 <Trees :size="22" aria-hidden="true" />
                 <span><strong>指定公園</strong><small>只看選定公園</small></span>
               </button>
             </div>
           </fieldset>
-
-          <label v-if="draft.locationMode === 'district'" class="scope-select" for="explore-district">
-            <span>行政區</span>
-            <select id="explore-district" name="explore-district" :value="draft.location" autocomplete="off" @change="handleDistrictChange">
-              <option v-for="district in districtOptions" :key="district" :value="district">{{ district }}</option>
-            </select>
-          </label>
 
           <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
             <legend>搜尋地點或公園</legend>
