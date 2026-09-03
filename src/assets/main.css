@@ -1620,5 +1620,40 @@ html { scroll-padding-top: 96px; }
   }
 }
 
+/* 手機版搜尋聚焦 - 自動置頂全螢幕防鍵盤跑版 */
+@media (max-width: 640px) {
+  .responsive-dialog.is-search-focused {
+    align-items: flex-start !important;
+    padding: 0 !important;
+  }
+
+  .scope-sheet.is-search-focused {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding-top: calc(12px + env(safe-area-inset-top)) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .scope-sheet.is-search-focused .responsive-dialog__handle {
+    display: none !important;
+  }
+
+  .scope-sheet.is-search-focused .scope-sheet__body {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 24px !important;
+  }
+
+  .scope-sheet.is-search-focused .places-dropdown-panel {
+    max-height: calc(100dvh - 180px) !important;
+    overflow-y: auto !important;
+  }
+}
+
 
 

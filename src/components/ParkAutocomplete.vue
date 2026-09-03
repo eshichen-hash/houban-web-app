@@ -39,6 +39,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   select: [park: SelectedParkResult]
+  focus: []
+  blur: []
 }>()
 
 const inputRef = useTemplateRef<HTMLInputElement>('inputRef')
@@ -293,6 +295,17 @@ watch(
     }
   }
 )
+
+function handleFocus() {
+  fetchSuggestions(query.value)
+  emit('focus')
+}
+
+function handleBlur() {
+  setTimeout(() => {
+    emit('blur')
+  }, 250)
+}
 </script>
 
 <template>
@@ -308,7 +321,8 @@ watch(
         autocomplete="off"
         class="park-search-input"
         @input="handleInput"
-        @focus="fetchSuggestions(query)"
+        @focus="handleFocus"
+        @blur="handleBlur"
       />
       <Loader2 v-if="isSearching" :size="18" class="animate-spin text-muted" aria-hidden="true" />
       <button

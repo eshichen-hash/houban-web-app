@@ -29,6 +29,7 @@ let previousBodyOverflow = ''
 
 const selectedParkData = ref<SelectedParkResult | null>(null)
 const isLocating = ref(false)
+const isSearchFocused = ref(false)
 
 function syncDraft() {
   Object.assign(draft, props.scope)
@@ -130,6 +131,7 @@ function clearSelectedGooglePark() {
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
+  isSearchFocused.value = false
   searchQuery.value = result.name
   selectedParkData.value = result
   draft.locationMode = 'park'
@@ -150,6 +152,10 @@ function focusableElements() {
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
+    if (isSearchFocused.value) {
+      isSearchFocused.value = false
+      return
+    }
     emit('close')
     return
   }
@@ -174,6 +180,7 @@ watch(draft, (value) => {
 
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
+    isSearchFocused.value = false
     syncDraft()
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     previousBodyOverflow = document.body.style.overflow
@@ -184,6 +191,7 @@ watch(() => props.open, async (isOpen) => {
     return
   }
 
+  isSearchFocused.value = false
   document.body.style.overflow = previousBodyOverflow
   await nextTick()
   previousFocus?.focus()
@@ -197,12 +205,13 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="dialog-fade">
-      <div v-if="open" class="responsive-dialog" role="presentation">
-      <div class="responsive-dialog__backdrop" aria-hidden="true"></div>
+      <div v-if="open" class="responsive-dialog" :class="{ 'is-search-focused': isSearchFocused }" role="presentation">
+      <div class="responsive-dialog__backdrop" aria-hidden="true" @click="emit('close')"></div>
       <section
         id="explore-scope-dialog"
         ref="panel"
         class="responsive-dialog__panel scope-sheet"
+        :class="{ 'is-search-focused': isSearchFocused }"
         role="dialog"
         aria-modal="true"
         aria-labelledby="scope-sheet-title"
@@ -249,17 +258,18 @@ onBeforeUnmount(() => {
                 v-model="searchQuery"
                 placeholder="輸入地點或公園名稱"
                 :auto-focus="false"
+                @focus="isSearchFocused = true"
                 @select="handleGoogleParkSelect"
               />
-              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
+              <button v-show="!isSearchFocused" class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
                 <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
                 <span>{{ isLocating ? '正在取得 GPS 定位...' : `使用我目前的 GPS 位置（已定位：${draft.location || '大安區'}）` }}</span>
               </button>
             </div>
           </fieldset>
 
-          <!-- 2. 活動搜尋範圍 -->
-          <fieldset class="scope-sheet__group">
+          <!-- 2. 活動搜尋範圍 (搜尋活躍時隱藏以防被鍵盤擠壓) -->
+          <fieldset v-show="!isSearchFocused" class="scope-sheet__group">
             <legend>活動搜尋半徑</legend>
             <div class="radius-options" role="group" aria-label="選擇活動搜尋範圍">
               <button
@@ -278,7 +288,7 @@ onBeforeUnmount(() => {
           </fieldset>
         </div>
 
-        <footer class="responsive-dialog__footer">
+        <footer v-show="!isSearchFocused" class="responsive-dialog__footer">
           <p class="scope-sheet__count" aria-live="polite">目前條件有 {{ resultCount }} 場活動</p>
           <button class="button button--primary button--full" type="button" :disabled="!canApply" @click="applyScope">
             顯示 {{ resultCount }} 場附近活動
