@@ -1405,10 +1405,11 @@ html { scroll-padding-top: 96px; }
 
 .direct-park-search-panel {
   display: grid;
-  gap: 4px;
+  gap: 0;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  margin: 0;
 }
 
 .field-heading {

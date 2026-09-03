@@ -356,7 +356,7 @@ watch(
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  margin-bottom: 6px;
+  margin: 0;
 }
 
 .park-autocomplete-input-box {
@@ -370,7 +370,7 @@ watch(
   background: rgba(255, 253, 248, 0.96);
   border: 1px solid #b9d0da;
   border-radius: 14px;
-  padding: 0 12px;
+  padding: 0 14px;
   box-shadow: none;
   transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -384,8 +384,10 @@ watch(
 
 .search-icon {
   color: var(--color-primary, #214c69);
-  flex: 0 0 auto;
-  margin-right: 8px;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
 }
 
 .park-search-input {
@@ -396,15 +398,15 @@ watch(
   outline: 0;
   background: transparent;
   color: var(--ink, #20343b);
-  font-size: 0.96rem;
-  font-weight: 600;
-  padding: 8px 0;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: 10px 0;
 }
 
 .park-search-input::placeholder {
   color: var(--color-text-muted, #7c8f94);
-  font-weight: 400;
-  font-size: 0.88rem;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .clear-button {
