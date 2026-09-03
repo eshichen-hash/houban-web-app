@@ -1372,6 +1372,41 @@ html { scroll-padding-top: 96px; }
   transform: rotate(-180deg);
 }
 
+/* 探索範圍 - GPS 快選按鈕樣式 */
+.scope-search-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.btn-gps-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--color-primary, #214c69);
+  font-size: 0.84rem;
+  font-weight: 800;
+  background: rgba(33, 76, 105, 0.06);
+  border: 1px dashed rgba(33, 76, 105, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-gps-shortcut:hover {
+  background: rgba(33, 76, 105, 0.12);
+  border-color: var(--color-primary, #214c69);
+  transform: translateY(-1px);
+}
+
+.btn-gps-shortcut:active {
+  transform: scale(0.97);
+}
+
 /* 活動行程區塊 對稱式 Auto Layout & RWD */
 .schedule-card-row {
   display: flex;

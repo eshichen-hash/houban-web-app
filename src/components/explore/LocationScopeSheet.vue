@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { LocateFixed, MapPin, Trees, X } from 'lucide-vue-next'
+import { LocateFixed, MapPin, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
 import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
-import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
+import type { ExploreRadius, ExploreScope } from '@/types/explore'
 
 const props = defineProps<{
   open: boolean
@@ -22,13 +22,7 @@ const panel = useTemplateRef<HTMLElement>('panel')
 const radiusOptions: ExploreRadius[] = [1, 3, 5, 10]
 const draft = reactive<ExploreScope>({ ...props.scope })
 const searchQuery = ref('')
-const canApply = computed(() => draft.locationMode !== 'park' || Boolean(draft.selectedParkId))
-
-const filteredParks = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return props.parks
-  return props.parks.filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
-})
+const canApply = computed(() => true)
 
 let previousFocus: HTMLElement | null = null
 let previousBodyOverflow = ''
@@ -107,32 +101,32 @@ async function detectCurrentLocation() {
       }
 
       draft.location = foundDistrict || '大安區'
+      draft.locationMode = 'current'
+      draft.selectedParkId = null
+      selectedParkData.value = null
       isLocating.value = false
     },
     (error) => {
       console.warn('瀏覽器 GPS 定位失敗:', error)
       isLocating.value = false
       draft.location = '大安區'
+      draft.locationMode = 'current'
+      draft.selectedParkId = null
+      selectedParkData.value = null
     },
     { enableHighAccuracy: true, timeout: 7000 }
   )
 }
 
-function chooseMode(mode: ExploreLocationMode) {
-  draft.locationMode = mode
-  if (mode !== 'park') {
-    draft.selectedParkId = null
-    selectedParkData.value = null
-  }
-  if (mode === 'current') {
-    detectCurrentLocation()
-  }
+function useCurrentLocation() {
+  detectCurrentLocation()
 }
 
 function clearSelectedGooglePark() {
   draft.selectedParkId = null
   selectedParkData.value = null
   searchQuery.value = ''
+  draft.locationMode = 'current'
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
@@ -140,13 +134,7 @@ function handleGoogleParkSelect(result: SelectedParkResult) {
   selectedParkData.value = result
   draft.locationMode = 'park'
   draft.selectedParkId = result.name
-  draft.location = result.district ? result.district.replace('台北市', '') : '台北市'
-}
-
-function handleDistrictChange(event: Event) {
-  const select = event.target as HTMLSelectElement
-  draft.location = select.value
-  draft.selectedParkId = null
+  draft.location = result.district ? result.district.replace('台北市', '') : result.name
 }
 
 function applyScope() {
@@ -233,24 +221,11 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="scope-sheet__body">
+          <!-- 1. 中心搜尋地點 -->
           <fieldset class="scope-sheet__group">
-            <legend>從哪裡開始找？</legend>
-            <div class="scope-mode-grid">
-              <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'current' }" type="button" :aria-pressed="draft.locationMode === 'current'" @click="chooseMode('current')">
-                <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
-                <span><strong>目前位置</strong><small>{{ isLocating ? '正在取得 GPS 定位...' : `已定位：${draft.location || '大安區'}` }}</small></span>
-              </button>
-              <button class="scope-mode" :class="{ 'is-selected': draft.locationMode === 'park' }" type="button" :aria-pressed="draft.locationMode === 'park'" @click="chooseMode('park')">
-                <Trees :size="22" aria-hidden="true" />
-                <span><strong>指定公園</strong><small>只看選定公園</small></span>
-              </button>
-            </div>
-          </fieldset>
+            <legend>搜尋中心地點</legend>
 
-          <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
-            <legend>搜尋地點或公園</legend>
-
-            <!-- 已選定公園資訊卡片 -->
+            <!-- 已選定指定公園/地點資訊卡片 -->
             <div v-if="selectedParkData || draft.selectedParkId" class="selected-google-park-card">
               <div class="selected-google-park-card__header">
                 <span class="tag tag--success">✓ 已選定地點</span>
@@ -268,19 +243,24 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 未選定時：顯示即時搜尋框 -->
-            <div v-else>
+            <!-- 預設：即時搜尋框 ＋ GPS 快捷按鈕 -->
+            <div v-else class="scope-search-block">
               <ParkAutocomplete
                 v-model="searchQuery"
                 placeholder="輸入地點或公園名稱"
-                :auto-focus="true"
+                :auto-focus="false"
                 @select="handleGoogleParkSelect"
               />
+              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
+                <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+                <span>{{ isLocating ? '正在取得 GPS 定位...' : `使用我目前的 GPS 位置（已定位：${draft.location || '大安區'}）` }}</span>
+              </button>
             </div>
           </fieldset>
 
+          <!-- 2. 活動搜尋範圍 -->
           <fieldset class="scope-sheet__group">
-            <legend>活動搜尋範圍</legend>
+            <legend>活動搜尋半徑</legend>
             <div class="radius-options" role="group" aria-label="選擇活動搜尋範圍">
               <button
                 v-for="radius in radiusOptions"
@@ -292,7 +272,7 @@ onBeforeUnmount(() => {
                 @click="draft.radius = radius"
               >
                 <strong>{{ radius }} 公里</strong>
-                <small>{{ radius === 1 ? '步行附近' : radius === 3 ? '附近活動' : radius === 5 ? '短程交通' : '更多選擇' }}</small>
+                <small>{{ radius === 1 ? '步行附近' : radius === 3 ? '推薦範圍' : radius === 5 ? '短程交通' : '生活圈' }}</small>
               </button>
             </div>
           </fieldset>
@@ -301,7 +281,7 @@ onBeforeUnmount(() => {
         <footer class="responsive-dialog__footer">
           <p class="scope-sheet__count" aria-live="polite">目前條件有 {{ resultCount }} 場活動</p>
           <button class="button button--primary button--full" type="button" :disabled="!canApply" @click="applyScope">
-            {{ canApply ? `顯示 ${resultCount} 場附近活動` : '請先選擇一個公園' }}
+            顯示 {{ resultCount }} 場附近活動
           </button>
         </footer>
       </section>
