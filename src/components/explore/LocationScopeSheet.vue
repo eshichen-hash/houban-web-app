@@ -34,32 +34,53 @@ const filteredParks = computed(() => {
 let previousFocus: HTMLElement | null = null
 let previousBodyOverflow = ''
 
+const selectedParkData = ref<SelectedParkResult | null>(null)
+
 function syncDraft() {
   Object.assign(draft, props.scope)
+  if (draft.selectedParkId) {
+    const existing = props.parks.find((p) => p.id === draft.selectedParkId || p.name === draft.selectedParkId)
+    if (existing) {
+      selectedParkData.value = {
+        name: existing.name,
+        address: existing.address,
+        district: existing.district,
+        lat: existing.lat,
+        lng: existing.lng,
+      }
+    } else {
+      selectedParkData.value = {
+        name: draft.selectedParkId,
+        address: draft.location,
+        district: draft.location,
+      }
+    }
+  } else {
+    selectedParkData.value = null
+  }
 }
 
 function chooseMode(mode: ExploreLocationMode) {
   draft.locationMode = mode
-  if (mode !== 'park') draft.selectedParkId = null
+  if (mode !== 'park') {
+    draft.selectedParkId = null
+    selectedParkData.value = null
+  }
   if (mode === 'current') draft.location = '大安區'
 }
 
-function choosePark(park: Park) {
-  draft.locationMode = 'park'
-  draft.selectedParkId = park.id
-  draft.location = park.district.replace('台北市', '')
+function clearSelectedGooglePark() {
+  draft.selectedParkId = null
+  selectedParkData.value = null
+  searchQuery.value = ''
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
   searchQuery.value = result.name
-  const existing = props.parks.find((p) => p.name.includes(result.name) || result.name.includes(p.name))
-  if (existing) {
-    choosePark(existing)
-  } else {
-    draft.locationMode = 'park'
-    draft.selectedParkId = result.name
-    draft.location = result.district ? result.district.replace('台北市', '') : '台北市'
-  }
+  selectedParkData.value = result
+  draft.locationMode = 'park'
+  draft.selectedParkId = result.name
+  draft.location = result.district ? result.district.replace('台北市', '') : '台北市'
 }
 
 function handleDistrictChange(event: Event) {
@@ -178,25 +199,37 @@ onBeforeUnmount(() => {
           </label>
 
           <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
-            <legend>選擇或搜尋公園</legend>
-            <ParkAutocomplete
-              v-model="searchQuery"
-              placeholder="搜尋想去的公園（即時跳出選項）..."
-              @select="handleGoogleParkSelect"
-            />
-            <div class="park-option-list">
-              <button
-                v-for="park in filteredParks"
-                :key="park.id"
-                class="park-option"
-                :class="{ 'is-selected': draft.selectedParkId === park.id || draft.selectedParkId === park.name }"
-                type="button"
-                :aria-pressed="draft.selectedParkId === park.id || draft.selectedParkId === park.name"
-                @click="choosePark(park)"
-              >
-                <MapPin :size="20" aria-hidden="true" />
-                <span><strong>{{ park.name }}</strong><small>{{ park.district }}</small></span>
-              </button>
+            <legend>Google 地圖即時搜尋公園</legend>
+
+            <!-- 已選定公園資訊卡片 -->
+            <div v-if="selectedParkData || draft.selectedParkId" class="selected-google-park-card">
+              <div class="selected-google-park-card__header">
+                <span class="tag tag--success">✓ 已選定公園</span>
+                <button class="text-link" type="button" @click="clearSelectedGooglePark">重新搜尋其他公園</button>
+              </div>
+              <div class="selected-google-park-card__body">
+                <div class="selected-google-park-icon">
+                  <MapPin :size="22" />
+                </div>
+                <div class="selected-google-park-text">
+                  <strong>{{ selectedParkData?.name || draft.selectedParkId }}</strong>
+                  <span v-if="selectedParkData?.address">{{ selectedParkData.address }}</span>
+                  <small v-if="selectedParkData?.district">{{ selectedParkData.district }}</small>
+                </div>
+              </div>
+            </div>
+
+            <!-- 未選定時：顯示即時 Google Places 搜尋框 -->
+            <div v-else>
+              <ParkAutocomplete
+                v-model="searchQuery"
+                placeholder="請輸入想去的公園（例：青年公園、大安森林公園）..."
+                :auto-focus="true"
+                @select="handleGoogleParkSelect"
+              />
+              <p class="google-places-helper">
+                💡 輸入公園名稱，系統將直接連線 Google 地圖即時為您搜尋全台公園。
+              </p>
             </div>
           </fieldset>
 

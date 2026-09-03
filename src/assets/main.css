@@ -1237,5 +1237,77 @@ html { scroll-padding-top: 96px; }
   margin-right: 8px;
 }
 
+/* 已選定 Google 公園卡片樣式 */
+.selected-google-park-card {
+  padding: 16px;
+  background: rgba(220, 252, 231, 0.45);
+  border: 1.5px solid #86efac;
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.selected-google-park-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.selected-google-park-card__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.selected-google-park-icon {
+  width: 42px;
+  height: 42px;
+  background: #ffffff;
+  color: var(--color-primary);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-sm);
+  flex: 0 0 auto;
+}
+
+.selected-google-park-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.selected-google-park-text strong {
+  display: block;
+  font-size: 1.12rem;
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+.selected-google-park-text span {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.selected-google-park-text small {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  background: rgba(33, 76, 105, 0.08);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.google-places-helper {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
 
 

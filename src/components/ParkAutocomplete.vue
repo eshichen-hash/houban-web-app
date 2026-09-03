@@ -154,11 +154,11 @@ async function fetchSuggestions(input: string) {
             source: 'google' as const,
           }))
 
-          // 合併去重：保留 localMatched 並加入 Google 新探索到的地點
-          const merged: PlaceSuggestion[] = [...localMatched]
-          for (const g of googleItems) {
-            if (!merged.some((m) => m.mainText === g.mainText)) {
-              merged.push(g)
+          // 優先以 Google Places 即時搜尋結果為主，並整合在地快取
+          const merged: PlaceSuggestion[] = [...googleItems]
+          for (const l of localMatched) {
+            if (!merged.some((m) => m.mainText === l.mainText)) {
+              merged.push(l)
             }
           }
           suggestions.value = merged
