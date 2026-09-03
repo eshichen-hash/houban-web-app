@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Building2, LocateFixed, MapPin, Trees, X } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, reactive, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
 import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
 import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
@@ -22,7 +22,14 @@ const panel = useTemplateRef<HTMLElement>('panel')
 const districtOptions = ['大安區', '中正區', '信義區']
 const radiusOptions: ExploreRadius[] = [1, 3, 5, 10]
 const draft = reactive<ExploreScope>({ ...props.scope })
+const searchQuery = ref('')
 const canApply = computed(() => draft.locationMode !== 'park' || Boolean(draft.selectedParkId))
+
+const filteredParks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return props.parks
+  return props.parks.filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
+})
 
 let previousFocus: HTMLElement | null = null
 let previousBodyOverflow = ''
@@ -44,6 +51,7 @@ function choosePark(park: Park) {
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
+  searchQuery.value = result.name
   const existing = props.parks.find((p) => p.name.includes(result.name) || result.name.includes(p.name))
   if (existing) {
     choosePark(existing)
@@ -172,12 +180,13 @@ onBeforeUnmount(() => {
           <fieldset v-if="draft.locationMode === 'park'" class="scope-sheet__group">
             <legend>選擇或搜尋公園</legend>
             <ParkAutocomplete
+              v-model="searchQuery"
               placeholder="搜尋想去的公園（即時跳出選項）..."
               @select="handleGoogleParkSelect"
             />
             <div class="park-option-list">
               <button
-                v-for="park in parks"
+                v-for="park in filteredParks"
                 :key="park.id"
                 class="park-option"
                 :class="{ 'is-selected': draft.selectedParkId === park.id || draft.selectedParkId === park.name }"
@@ -188,6 +197,9 @@ onBeforeUnmount(() => {
                 <MapPin :size="20" aria-hidden="true" />
                 <span><strong>{{ park.name }}</strong><small>{{ park.district }}</small></span>
               </button>
+              <div v-if="filteredParks.length === 0" class="empty-state" style="padding: 16px; text-align: center; color: var(--ink-soft); font-size: 0.9rem;">
+                找不到符合「{{ searchQuery }}」的本機公園，您可直接點選上方 Google 即時推薦！
+              </div>
             </div>
           </fieldset>
 
