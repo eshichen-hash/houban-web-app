@@ -99,7 +99,7 @@ async function initServices() {
 }
 
 /**
- * 執行即時搜尋推薦 (雙軌：在地資料庫 + Google Places API)
+ * 執行即時搜尋推薦 (Google Places API + 在地公園資料庫 + 網絡備援)
  */
 async function fetchSuggestions(input: string) {
   const trimmed = input.trim()
@@ -109,7 +109,7 @@ async function fetchSuggestions(input: string) {
     return
   }
 
-  // 1. 本地公園資料庫即時毫秒匹配
+  // 1. 本地全台主要公園即時毫秒匹配
   const q = trimmed.toLowerCase()
   const localMatched: PlaceSuggestion[] = parks
     .filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
@@ -125,11 +125,9 @@ async function fetchSuggestions(input: string) {
     }))
 
   suggestions.value = localMatched
-  if (localMatched.length > 0) {
-    showDropdown.value = true
-  }
+  showDropdown.value = true
 
-  // 2. Google Places API 聯網搜尋補充
+  // 2. Google Places API 聯網搜尋（若已配置金鑰）
   if (!autocompleteService) {
     await initServices()
   }
@@ -154,7 +152,7 @@ async function fetchSuggestions(input: string) {
             source: 'google' as const,
           }))
 
-          // 優先以 Google Places 即時搜尋結果為主，並整合在地快取
+          // 優先以 Google Places 即時搜尋結果為主，並整合在地項目
           const merged: PlaceSuggestion[] = [...googleItems]
           for (const l of localMatched) {
             if (!merged.some((m) => m.mainText === l.mainText)) {
@@ -162,12 +160,37 @@ async function fetchSuggestions(input: string) {
             }
           }
           suggestions.value = merged
-          showDropdown.value = merged.length > 0
+          showDropdown.value = true
         }
       })
     } catch (err) {
       isSearching.value = false
-      console.warn('取得 Places 推薦清單時發生錯誤:', err)
+      console.warn('取得 Google Places 推薦清單時發生錯誤:', err)
+    }
+  } else {
+    // 3. 若尚未能連線 Google SDK，使用網絡即時地理資料補充
+    if (localMatched.length === 0) {
+      isSearching.value = true
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=tw&q=${encodeURIComponent(trimmed + ' 公園')}&limit=6`)
+        const data = await res.json()
+        isSearching.value = false
+        if (Array.isArray(data) && data.length > 0) {
+          suggestions.value = data.map((item: any) => ({
+            placeId: String(item.place_id),
+            mainText: item.display_name.split(',')[0],
+            secondaryText: item.display_name,
+            fullText: item.display_name,
+            source: 'local' as const,
+            lat: Number(item.lat),
+            lng: Number(item.lon),
+            district: '全台地點',
+          }))
+          showDropdown.value = true
+        }
+      } catch {
+        isSearching.value = false
+      }
     }
   }
 }
