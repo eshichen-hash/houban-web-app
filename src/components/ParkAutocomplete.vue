@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Building2, Check, Loader2, MapPin, Search, Sparkles, X } from 'lucide-vue-next'
 import { nextTick, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { parks } from '@/data/events'
 
 export interface SelectedParkResult {
   name: string
@@ -16,6 +17,10 @@ interface PlaceSuggestion {
   mainText: string
   secondaryText: string
   fullText: string
+  source?: 'google' | 'local'
+  lat?: number
+  lng?: number
+  district?: string
 }
 
 const props = withDefaults(
@@ -25,7 +30,7 @@ const props = withDefaults(
     autoFocus?: boolean
   }>(),
   {
-    placeholder: '請輸入想搜尋的公園（例：大安森林公園、青年公園）...',
+    placeholder: '請輸入想搜尋的公園（例：青年公園、大安森林公園、花博）...',
     modelValue: '',
     autoFocus: false,
   }
@@ -94,7 +99,7 @@ async function initServices() {
 }
 
 /**
- * 執行即時搜尋推薦
+ * 執行即時搜尋推薦 (雙軌：在地資料庫 + Google Places API)
  */
 async function fetchSuggestions(input: string) {
   const trimmed = input.trim()
@@ -104,51 +109,85 @@ async function fetchSuggestions(input: string) {
     return
   }
 
+  // 1. 本地公園資料庫即時毫秒匹配
+  const q = trimmed.toLowerCase()
+  const localMatched: PlaceSuggestion[] = parks
+    .filter((p) => p.name.toLowerCase().includes(q) || p.district.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
+    .map((p) => ({
+      placeId: p.id,
+      mainText: p.name,
+      secondaryText: `${p.district}・${p.address}`,
+      fullText: `${p.name} ${p.address}`,
+      source: 'local' as const,
+      lat: p.lat,
+      lng: p.lng,
+      district: p.district,
+    }))
+
+  suggestions.value = localMatched
+  if (localMatched.length > 0) {
+    showDropdown.value = true
+  }
+
+  // 2. Google Places API 聯網搜尋補充
   if (!autocompleteService) {
     await initServices()
   }
 
-  if (!autocompleteService) {
-    return
-  }
-
-  isSearching.value = true
-
-  try {
-    const request = {
-      input: trimmed,
-      componentRestrictions: { country: 'tw' },
-      sessionToken,
-    }
-
-    autocompleteService.getPlacePredictions(request, (predictions: any[], status: any) => {
-      isSearching.value = false
-      if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && predictions?.length) {
-        suggestions.value = predictions.map((p) => ({
-          placeId: p.place_id,
-          mainText: p.structured_formatting?.main_text || p.description,
-          secondaryText: p.structured_formatting?.secondary_text || '',
-          fullText: p.description,
-        }))
-        showDropdown.value = true
-      } else {
-        suggestions.value = []
+  if (autocompleteService) {
+    isSearching.value = true
+    try {
+      const request = {
+        input: trimmed,
+        componentRestrictions: { country: 'tw' },
+        sessionToken,
       }
-    })
-  } catch (err) {
-    isSearching.value = false
-    console.warn('取得 Places 推薦清單時發生錯誤:', err)
+
+      autocompleteService.getPlacePredictions(request, (predictions: any[], status: any) => {
+        isSearching.value = false
+        if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && predictions?.length) {
+          const googleItems: PlaceSuggestion[] = predictions.map((p) => ({
+            placeId: p.place_id,
+            mainText: p.structured_formatting?.main_text || p.description,
+            secondaryText: p.structured_formatting?.secondary_text || p.description,
+            fullText: p.description,
+            source: 'google' as const,
+          }))
+
+          // 合併去重：保留 localMatched 並加入 Google 新探索到的地點
+          const merged: PlaceSuggestion[] = [...localMatched]
+          for (const g of googleItems) {
+            if (!merged.some((m) => m.mainText === g.mainText)) {
+              merged.push(g)
+            }
+          }
+          suggestions.value = merged
+          showDropdown.value = merged.length > 0
+        }
+      })
+    } catch (err) {
+      isSearching.value = false
+      console.warn('取得 Places 推薦清單時發生錯誤:', err)
+    }
   }
 }
-
-/**
- * 使用者點選推薦項目
- */
 function handleSelectSuggestion(item: PlaceSuggestion) {
   query.value = item.mainText
   selectedName.value = item.mainText
   showDropdown.value = false
   emit('update:modelValue', item.mainText)
+
+  if (item.source === 'local') {
+    emit('select', {
+      name: item.mainText,
+      address: item.secondaryText,
+      district: item.district || '台北市',
+      placeId: item.placeId,
+      lat: item.lat,
+      lng: item.lng,
+    })
+    return
+  }
 
   if (placesService && item.placeId) {
     placesService.getDetails(
@@ -187,7 +226,7 @@ function handleSelectSuggestion(item: PlaceSuggestion) {
     emit('select', {
       name: item.mainText,
       address: item.secondaryText,
-      district: '台北市',
+      district: item.district || '台北市',
       placeId: item.placeId,
     })
   }

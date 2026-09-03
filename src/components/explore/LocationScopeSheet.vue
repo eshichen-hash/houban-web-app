@@ -197,9 +197,6 @@ onBeforeUnmount(() => {
                 <MapPin :size="20" aria-hidden="true" />
                 <span><strong>{{ park.name }}</strong><small>{{ park.district }}</small></span>
               </button>
-              <div v-if="filteredParks.length === 0" class="empty-state" style="padding: 16px; text-align: center; color: var(--ink-soft); font-size: 0.9rem;">
-                找不到符合「{{ searchQuery }}」的本機公園，您可直接點選上方 Google 即時推薦！
-              </div>
             </div>
           </fieldset>
 
