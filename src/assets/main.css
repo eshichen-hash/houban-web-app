@@ -1349,27 +1349,94 @@ html { scroll-padding-top: 96px; }
 }
 
 /* 活動地點區塊 Auto Layout & RWD */
+.schedule-direct-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 253, 248, 0.82);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  transition: background-color 0.22s ease, border-color 0.22s ease;
+}
+
+.schedule-direct-row:active {
+  background-color: rgba(242, 248, 249, 0.9);
+}
+
+.schedule-direct-row:focus-within {
+  background-color: rgba(255, 253, 248, 0.82);
+}
+
 .schedule-direct-row--location {
   align-items: start;
 }
 
 .schedule-direct-row--location .schedule-direct-icon {
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .direct-park-search-panel {
   display: grid;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.field-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field-heading strong {
+  font-size: 1.05rem;
+}
+
+.field-heading span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
 }
 
 @media (max-width: 540px) {
   .schedule-direct-row {
-    padding: 12px 14px;
+    padding: 12px 12px;
     gap: 10px;
-    grid-template-columns: 22px minmax(0, 1fr);
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+  .schedule-direct-icon {
+    margin-top: 3px;
+  }
+  .schedule-time-range__fields {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 6px;
+  }
+  .schedule-time-field span {
+    font-size: 0.78rem;
+  }
+  .schedule-time-field input {
+    padding: 8px 6px;
+    font-size: 0.9rem;
+    min-height: 44px;
+  }
+  .schedule-direct-input {
+    padding: 8px 10px;
+    font-size: 0.92rem;
+    min-height: 44px;
   }
   .selected-google-park-card {
     padding: 12px;
+    gap: 8px;
   }
   .selected-google-park-card__header {
     flex-wrap: wrap;
@@ -1380,7 +1447,36 @@ html { scroll-padding-top: 96px; }
     font-size: 0.8rem;
   }
   .selected-google-park-text strong {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
+  }
+  .selected-google-park-text span {
+    font-size: 0.82rem;
+  }
+  .field-heading strong {
+    font-size: 0.98rem;
+  }
+  .field-heading span {
+    font-size: 0.76rem;
+  }
+  .google-places-helper {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+}
+
+@media (max-width: 380px) {
+  .schedule-direct-row {
+    padding: 10px 8px;
+    gap: 8px;
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+  .schedule-time-field input {
+    padding: 6px 4px;
+    font-size: 0.84rem;
+  }
+  .schedule-direct-input {
+    padding: 6px 8px;
+    font-size: 0.86rem;
   }
 }
 

@@ -354,7 +354,9 @@ watch(
 .park-autocomplete-wrapper {
   position: relative;
   width: 100%;
-  margin-bottom: 12px;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-bottom: 6px;
 }
 
 .park-autocomplete-input-box {
@@ -362,11 +364,13 @@ watch(
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 52px;
-  background: var(--paper);
-  border: 2px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 0 14px;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 48px;
+  background: var(--paper, #ffffff);
+  border: 1.5px solid var(--line, #b9d0da);
+  border-radius: var(--radius-control, 14px);
+  padding: 0 10px;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
 }
@@ -379,25 +383,28 @@ watch(
 }
 
 .search-icon {
-  color: var(--color-primary);
+  color: var(--color-primary, #214c69);
   flex: 0 0 auto;
-  margin-right: 10px;
+  margin-right: 8px;
 }
 
 .park-search-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink);
-  font-size: 1.02rem;
+  color: var(--ink, #20343b);
+  font-size: 0.96rem;
   font-weight: 600;
-  padding: 10px 0;
+  padding: 8px 0;
 }
 
 .park-search-input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--color-text-muted, #7c8f94);
   font-weight: 400;
+  font-size: 0.88rem;
 }
 
 .clear-button {
@@ -406,7 +413,7 @@ watch(
   color: var(--ink-soft);
   display: grid;
   place-items: center;
-  padding: 6px;
+  padding: 4px;
   cursor: pointer;
   border-radius: 50%;
   flex: 0 0 auto;
@@ -418,15 +425,19 @@ watch(
 }
 
 .places-dropdown-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin-top: 6px;
   background: #ffffff;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 8px 28px rgba(33, 76, 105, 0.16);
+  border: 1px solid var(--line, #b9d0da);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(33, 76, 105, 0.14);
   overflow: hidden;
   display: grid;
   gap: 2px;
-  padding: 6px 0;
+  padding: 4px 0;
   animation: fadeIn 0.18s ease;
 }
 
@@ -439,20 +450,21 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px 4px;
-  font-size: 0.76rem;
+  padding: 6px 12px 2px;
+  font-size: 0.74rem;
   font-weight: 800;
   color: #214c69;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .places-dropdown-item {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 8px 12px;
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -466,8 +478,8 @@ watch(
 }
 
 .places-item-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: rgba(33, 76, 105, 0.08);
   color: #214c69;
   border-radius: 50%;
@@ -483,7 +495,7 @@ watch(
 
 .places-item-title {
   display: block;
-  font-size: 0.98rem;
+  font-size: 0.94rem;
   color: #20343b;
   font-weight: 800;
   overflow: hidden;
@@ -492,12 +504,13 @@ watch(
 }
 
 .places-item-desc {
-  display: block;
-  font-size: 0.8rem;
-  color: #65777a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.76rem;
+  color: #65777a;
+  line-height: 1.35;
   margin-top: 1px;
 }
 
@@ -513,5 +526,22 @@ watch(
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .park-autocomplete-input-box {
+    padding: 0 8px;
+    min-height: 46px;
+  }
+  .park-search-input {
+    font-size: 0.9rem;
+  }
+  .park-search-input::placeholder {
+    font-size: 0.82rem;
+  }
+  .places-dropdown-item {
+    padding: 7px 10px;
+    gap: 8px;
+  }
 }
 </style>
