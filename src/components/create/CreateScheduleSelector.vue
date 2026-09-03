@@ -145,32 +145,28 @@ function saveCustomMeeting() {
         <span class="schedule-row-title">活動時間</span>
       </div>
       <div class="schedule-time-flow">
-        <div class="schedule-time-block">
-          <span class="schedule-sublabel">活動開始</span>
-          <input
-            id="create-custom-start-time"
-            name="event-start-time"
-            :value="time"
-            type="time"
-            autocomplete="off"
-            class="schedule-time-input"
-            @change="updateStartTime(($event.target as HTMLInputElement).value)"
-          />
-        </div>
-        <div class="schedule-time-tilde" aria-hidden="true">～</div>
-        <div class="schedule-time-block">
-          <span class="schedule-sublabel">活動結束</span>
-          <input
-            id="create-custom-end-time"
-            name="event-end-time"
-            :value="endTime"
-            type="time"
-            :min="time"
-            autocomplete="off"
-            class="schedule-time-input"
-            @change="updateEndTime(($event.target as HTMLInputElement).value)"
-          />
-        </div>
+        <input
+          id="create-custom-start-time"
+          name="event-start-time"
+          aria-label="活動開始時間"
+          :value="time"
+          type="time"
+          autocomplete="off"
+          class="schedule-time-input"
+          @change="updateStartTime(($event.target as HTMLInputElement).value)"
+        />
+        <span class="schedule-time-tilde" aria-hidden="true">至</span>
+        <input
+          id="create-custom-end-time"
+          name="event-end-time"
+          aria-label="活動結束時間"
+          :value="endTime"
+          type="time"
+          :min="time"
+          autocomplete="off"
+          class="schedule-time-input"
+          @change="updateEndTime(($event.target as HTMLInputElement).value)"
+        />
       </div>
     </div>
 

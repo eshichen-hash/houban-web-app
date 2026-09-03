@@ -1422,28 +1422,14 @@ html { scroll-padding-top: 96px; }
   box-sizing: border-box;
 }
 
-/* 時間橫向流式排版 (雙輸入框 + 垂直絕對置中波浪號) */
+/* 時間橫向流式排版 (雙輸入框 + 垂直絕對置中「至」) */
 .schedule-time-flow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
+  align-items: center;
   gap: 8px;
   width: 100%;
   box-sizing: border-box;
-}
-
-.schedule-time-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.schedule-sublabel {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--ink-soft);
-  text-align: center;
 }
 
 .schedule-time-input {
@@ -1464,13 +1450,14 @@ html { scroll-padding-top: 96px; }
 
 .schedule-time-tilde {
   height: 48px;
+  min-width: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 900;
+  font-size: 0.92rem;
+  font-weight: 800;
   color: var(--ink-soft);
-  padding: 0 4px;
+  padding: 0 2px;
   flex-shrink: 0;
   user-select: none;
 }
