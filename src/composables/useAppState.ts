@@ -119,7 +119,11 @@ function eventMatchesDate(event: EventItem, dateFilter: DateFilter, customDate: 
   return event.dateKey === dateFilter
 }
 
+import { useLiff } from '@/services/liffService'
+
 export function useAppState() {
+  const { liffState } = useLiff()
+
   const visibleEvents = computed(() => activeEvents.value.filter((event) => {
     const dateMatch = eventMatchesDate(event, state.dateFilter, state.customDate)
     const interestMatch = state.interest === '全部' || event.type === state.interest
@@ -134,13 +138,14 @@ export function useAppState() {
   }
 
   function toggleFavorite(id: string) {
+    const liffUser = liffState.profile
     const index = state.favorites.indexOf(id)
     if (index >= 0) {
       state.favorites.splice(index, 1)
-      removeFavoriteInSupabase(id)
+      removeFavoriteInSupabase(id, liffUser?.userId || 'user-me')
     } else {
       state.favorites.push(id)
-      addFavoriteInSupabase(id)
+      addFavoriteInSupabase(id, liffUser?.userId || 'user-me')
     }
   }
 
@@ -167,17 +172,25 @@ export function useAppState() {
   }
 
   function registerEvent(id: string) {
+    const liffUser = liffState.profile
     if (!state.registered.includes(id)) {
       state.registered.push(id)
-      registerEventInSupabase(id)
+      registerEventInSupabase(id, liffUser?.userId || 'user-me', liffUser?.displayName || '林淑芬')
     }
   }
 
   function createEvent(input: Omit<EventItem, 'id' | 'organizer'>) {
+    const liffUser = liffState.profile
     const created: EventItem = {
       ...input,
       id: `created-${Date.now()}`,
-      organizer: { name: '我', role: '活動發起人', rating: '新加入', organized: 1, verified: true },
+      organizer: {
+        name: liffUser?.displayName || '我',
+        role: '活動發起人',
+        rating: '新加入',
+        organized: 1,
+        verified: true,
+      },
     }
     state.createdEvents.unshift(created)
     if (cloudEvents.value.length > 0) {
@@ -196,6 +209,7 @@ export function useAppState() {
     activityTypes,
     parks,
     isCloudLoaded,
+    liffProfile: computed(() => liffState.profile),
     getEvent,
     toggleFavorite,
     setDateFilter,

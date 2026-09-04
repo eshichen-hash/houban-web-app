@@ -19,6 +19,8 @@ const { getEvent } = useAppState()
 const event = computed(() => getEvent(String(route.params.id)))
 const toastMessage = shallowRef('')
 
+import { shareActivityToLine } from '@/services/liffService'
+
 function showToast(msg: string) {
   toastMessage.value = msg
   setTimeout(() => {
@@ -32,19 +34,8 @@ function addToCalendar() {
 
 async function inviteFriends() {
   if (!event.value) return
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: event.value.title,
-        text: `邀請你一起參加「${event.value.title}」！\n地點：${event.value.park.name}`,
-        url: window.location.href,
-      })
-      return
-    } catch {
-      // 使用者取消系統分享面板時，保留 toast
-    }
-  }
-  showToast('已複製 LINE 邀請連結')
+  const res = await shareActivityToLine(event.value)
+  showToast(res.message)
 }
 </script>
 

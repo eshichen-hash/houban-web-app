@@ -30,7 +30,9 @@ type SubView = 'activities' | 'favorites' | 'parks' | 'notifications' | 'setting
 type ActivityTab = '即將開始' | '已報名' | '我發起的' | '已結束'
 
 const router = useRouter()
-const { state, favoriteEvents, registeredEvents, toggleFavorite } = useAppState()
+import { shareActivityToLine } from '@/services/liffService'
+
+const { state, favoriteEvents, registeredEvents, toggleFavorite, liffProfile } = useAppState()
 
 const currentSubView = shallowRef<SubView | null>(null)
 const currentActivityTab = shallowRef<ActivityTab>('即將開始')
@@ -45,7 +47,7 @@ if (registeredEvents.value.length > 0) {
 const activityTabs: ActivityTab[] = ['即將開始', '已報名', '我發起的', '已結束']
 
 // 個人設定表單資料
-const userDisplayName = shallowRef('林淑芬')
+const userDisplayName = shallowRef(liffProfile.value?.displayName || '林淑芬')
 const fontSizeSetting = shallowRef<'standard' | 'large'>('standard')
 const lineReminderSetting = shallowRef(true)
 
@@ -91,8 +93,9 @@ function openEvent(event: EventItem) {
   router.push(`/activity/${event.id}`)
 }
 
-function shareEvent(event: EventItem) {
-  showToast(`已準備分享「${event.title}」`)
+async function shareEvent(event: EventItem) {
+  const res = await shareActivityToLine(event)
+  showToast(res.message)
 }
 
 function showToast(msg: string) {

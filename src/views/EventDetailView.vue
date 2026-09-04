@@ -15,6 +15,8 @@ import GoogleMapView from '@/components/GoogleMapView.vue'
 import { useAppState } from '@/composables/useAppState'
 import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
+import { shareActivityToLine } from '@/services/liffService'
+
 const route = useRoute()
 const router = useRouter()
 const { getEvent, state } = useAppState()
@@ -34,19 +36,8 @@ function navigateToMeetingPoint() {
 
 async function share() {
   if (!event.value) return
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: event.value.title,
-        text: `${event.value.title}｜${event.value.park.name}`,
-        url: window.location.href,
-      })
-      return
-    } catch {
-      // 使用者取消分享
-    }
-  }
-  statusMessage.value = `已準備分享「${event.value.title}」`
+  const res = await shareActivityToLine(event.value)
+  statusMessage.value = res.message
 }
 </script>
 
