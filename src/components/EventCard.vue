@@ -49,7 +49,7 @@ const emit = defineEmits<{
         <span v-else class="capacity-badge">尚有 {{ props.event.spots }} 個名額</span>
       </div>
       <div class="event-card__facts">
-        <span><Clock3 :size="18" aria-hidden="true" />{{ props.event.time }}</span>
+        <span><Clock3 :size="18" aria-hidden="true" />{{ props.event.dateLabel ? `${props.event.dateLabel}・${props.event.time}` : props.event.time }}</span>
         <span><MapPin :size="18" aria-hidden="true" />{{ props.event.park.name }}</span>
       </div>
       <div class="tag-row">
