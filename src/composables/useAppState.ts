@@ -18,11 +18,11 @@ interface StoredState {
 }
 
 const state = reactive({
-  location: '目前位置',
+  location: '台中市西區',
   radius: 3 as ExploreRadius,
   locationMode: 'current' as ExploreLocationMode,
   selectedParkId: null as string | null,
-  centerCoords: null as { lat: number; lng: number } | null,
+  centerCoords: { lat: 24.1507, lng: 120.6632 } as { lat: number; lng: number } | null,
   dateFilter: 'today' as DateFilter,
   interest: '全部' as EventType | '全部',
   customDate: null as string | null,
@@ -42,12 +42,18 @@ function hydrateState() {
     if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
     if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
     if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
-    if (typeof stored.location === 'string' && stored.location.trim()) state.location = stored.location
+    if (typeof stored.location === 'string' && stored.location.trim() && stored.location !== '大安區') {
+      state.location = stored.location
+    } else {
+      state.location = '台中市西區'
+    }
     if (stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10) state.radius = stored.radius
     if (stored.locationMode === 'current' || stored.locationMode === 'district' || stored.locationMode === 'park') state.locationMode = stored.locationMode
     if (typeof stored.selectedParkId === 'string' || stored.selectedParkId === null) state.selectedParkId = stored.selectedParkId
     if (stored.centerCoords && typeof stored.centerCoords.lat === 'number' && typeof stored.centerCoords.lng === 'number') {
       state.centerCoords = stored.centerCoords
+    } else {
+      state.centerCoords = { lat: 24.1507, lng: 120.6632 }
     }
   } catch {
     // 本地資料損壞時回到乾淨的示意狀態，不阻擋使用者繼續操作。
