@@ -1372,11 +1372,88 @@ html { scroll-padding-top: 96px; }
   transform: rotate(-180deg);
 }
 
+/* 📍 目前 GPS 位置卡片 (Location-First 主卡片) */
+.current-gps-location-card {
+  padding: 16px;
+  background: rgba(224, 242, 254, 0.45);
+  border: 1.5px solid #bae6fd;
+  border-radius: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.current-gps-icon {
+  width: 44px;
+  height: 44px;
+  background: #ffffff;
+  color: #0284c7;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+  flex-shrink: 0;
+}
+
+.current-gps-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.current-gps-tag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.current-gps-tag-row .tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.btn-re-locate {
+  background: transparent;
+  border: 0;
+  color: #0284c7;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background-color 0.18s ease;
+}
+
+.btn-re-locate:hover {
+  background: rgba(2, 132, 199, 0.1);
+}
+
+.current-gps-text strong {
+  display: block;
+  font-size: 1.15rem;
+  color: var(--color-primary, #1b3b5a);
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.current-gps-text small {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary, #5f6d63);
+  margin-top: 2px;
+}
+
 /* 探索範圍 - 觸發搜尋框與 GPS 快選按鈕樣式 */
 .scope-search-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
 }
 

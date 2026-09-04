@@ -106,6 +106,7 @@ function showNotificationStatus() {
     <ExploreHeader
       :scope-summary="scopeSummary"
       :radius="state.radius"
+      :location-mode="state.locationMode"
       @open-scope="openScopeSettings"
       @open-notifications="showNotificationStatus"
     />

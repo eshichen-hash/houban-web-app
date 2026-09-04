@@ -38,6 +38,7 @@ let previousBodyOverflow = ''
 
 const selectedParkData = ref<SelectedParkResult | null>(null)
 const isLocating = ref(false)
+const userGpsCityDistrict = ref(props.scope.location && props.scope.location !== '目前位置' && props.scope.location !== '大安區' ? props.scope.location : '台中市西區')
 
 // 專屬全螢幕搜尋視圖狀態
 const isDedicatedSearchOpen = ref(false)
@@ -53,6 +54,9 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function syncDraft() {
   Object.assign(draft, props.scope)
+  if (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' && draft.locationMode === 'current') {
+    userGpsCityDistrict.value = draft.location
+  }
   if (draft.selectedParkId) {
     const existing = props.parks.find((p) => p.id === draft.selectedParkId || p.name === draft.selectedParkId)
     if (existing) {
@@ -362,6 +366,9 @@ async function detectCurrentLocation() {
         }
       }
 
+      if (foundDistrict && foundDistrict !== '目前位置') {
+        userGpsCityDistrict.value = foundDistrict
+      }
       draft.location = foundDistrict || '目前位置'
       draft.locationMode = 'current'
       draft.selectedParkId = null
@@ -491,46 +498,68 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="scope-sheet__body">
-          <!-- 1. 中心搜尋地點 -->
+          <!-- 1. 中心搜尋地點 (Location-First 架構) -->
           <fieldset class="scope-sheet__group">
             <legend>搜尋中心地點</legend>
 
-            <!-- 已選定指定公園/地點資訊卡片 -->
-            <div v-if="selectedParkData || draft.selectedParkId" class="selected-google-park-card">
-              <div class="selected-google-park-card__header">
-                <span class="tag tag--success">✓ 已選定地點</span>
-                <button class="text-link" type="button" @click="clearSelectedGooglePark">重新搜尋其他地點</button>
-              </div>
-              <div class="selected-google-park-card__body">
-                <div class="selected-google-park-icon">
-                  <MapPin :size="22" />
+            <!-- A. 已選定指定公園/地點模式 -->
+            <div v-if="draft.locationMode === 'park' && (selectedParkData || draft.selectedParkId)" class="scope-search-block">
+              <div class="selected-google-park-card">
+                <div class="selected-google-park-card__header">
+                  <span class="tag tag--success">✓ 已指定地點</span>
+                  <button class="btn-re-search" type="button" @click="openDedicatedSearch">
+                    <Search :size="14" aria-hidden="true" />
+                    <span>更換地點</span>
+                  </button>
                 </div>
-                <div class="selected-google-park-text">
-                  <strong>{{ selectedParkData?.name || draft.selectedParkId }}</strong>
-                  <span v-if="selectedParkData?.address">{{ selectedParkData.address }}</span>
-                  <small v-if="selectedParkData?.district">{{ selectedParkData.district }}</small>
+                <div class="selected-google-park-card__body">
+                  <div class="selected-google-park-icon">
+                    <MapPin :size="22" />
+                  </div>
+                  <div class="selected-google-park-text">
+                    <strong>{{ selectedParkData?.name || draft.selectedParkId }}</strong>
+                    <span v-if="selectedParkData?.address">{{ selectedParkData.address }}</span>
+                    <small v-if="selectedParkData?.district">{{ selectedParkData.district }}</small>
+                  </div>
                 </div>
               </div>
+
+              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
+                <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+                <span>{{ isLocating ? '正在取得 GPS 定位...' : `切換回我目前的 GPS 位置（${userGpsCityDistrict || '台中市西區'}）` }}</span>
+              </button>
             </div>
 
-            <!-- 預設：搜尋觸發框 ＋ GPS 快捷按鈕 -->
+            <!-- B. 預設：目前 GPS 位置為主卡片 + 搜尋其他地點按鈕 -->
             <div v-else class="scope-search-block">
+              <div class="current-gps-location-card">
+                <div class="current-gps-icon">
+                  <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+                </div>
+                <div class="current-gps-text">
+                  <div class="current-gps-tag-row">
+                    <span class="tag">📍 目前 GPS 位置</span>
+                    <button class="btn-re-locate" type="button" :disabled="isLocating" @click="detectCurrentLocation">
+                      {{ isLocating ? '定位中...' : '重新定位' }}
+                    </button>
+                  </div>
+                  <strong>{{ draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? draft.location : '台中市西區' }}</strong>
+                  <small>以此處為中心，搜尋周邊半徑內的公園活動</small>
+                </div>
+              </div>
+
               <div
                 class="search-trigger-box"
                 role="button"
                 tabindex="0"
-                aria-label="點擊開啟全螢幕搜尋"
+                aria-label="點擊搜尋全台公園或地點"
                 @click="openDedicatedSearch"
                 @keydown.enter="openDedicatedSearch"
                 @keydown.space.prevent="openDedicatedSearch"
               >
                 <Search :size="18" class="search-trigger-icon" aria-hidden="true" />
-                <span class="search-trigger-placeholder">輸入地點或公園名稱</span>
+                <span class="search-trigger-placeholder">想找其他地點？點此搜尋全台公園...</span>
               </div>
-              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
-                <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
-                <span>{{ isLocating ? '正在取得 GPS 定位...' : (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? `已定位：${draft.location}` : '使用我目前的 GPS 位置') }}</span>
-              </button>
             </div>
           </fieldset>
 
