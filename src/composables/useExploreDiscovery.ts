@@ -24,6 +24,11 @@ function computeHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lo
 }
 
 function matchesScope(event: EventItem, scope: ExploreScope) {
+  // 若尚未設定搜尋中心與座標，預設呈現推薦探索活動
+  if (!scope.location && !scope.selectedParkId && !scope.centerCoords) {
+    return true
+  }
+
   // 1. 若為選定特定公園名稱且精確符合，優先視為 0 公里直接符合
   if (scope.locationMode === 'park' && scope.selectedParkId) {
     if (event.park.id === scope.selectedParkId || event.park.name === scope.selectedParkId) {
@@ -108,7 +113,7 @@ export function useExploreDiscovery() {
     if (state.locationMode === 'park' && state.selectedParkId) {
       return parks.find((park) => park.id === state.selectedParkId)?.name ?? state.selectedParkId
     }
-    return state.location || '目前位置'
+    return state.location || ''
   })
 
   const dateLabel = computed(() => {

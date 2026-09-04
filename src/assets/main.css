@@ -1513,6 +1513,76 @@ html { scroll-padding-top: 96px; }
   transform: translateY(-1px);
 }
 
+/* 頂部膠囊按鈕 - 尚未選擇位置時的友善導引與脈動動畫 */
+.explore-header__scope--prompt {
+  border-color: #5b8d70;
+  background: rgba(220, 252, 231, 0.7);
+  box-shadow: 0 0 0 2px rgba(91, 141, 112, 0.18);
+  animation: promptPulse 2.8s infinite ease-in-out;
+}
+
+.explore-header__prompt-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink, #1b3b5a);
+  font-weight: 900;
+}
+
+.inline-pin-icon {
+  color: var(--green-dark, #2b5a41);
+  flex-shrink: 0;
+}
+
+@keyframes promptPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(91, 141, 112, 0.18);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(91, 141, 112, 0.32);
+    transform: translateY(-1px);
+  }
+}
+
+/* 尚未設定位置時的引導卡片 */
+.scope-empty-guidance-card {
+  padding: 16px;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1.5px dashed #b9d0da;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+}
+
+.scope-empty-guidance-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scope-empty-guidance-header strong {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink, #1b3b5a);
+}
+
+.scope-empty-guidance-header small {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary, #5f6d63);
+  margin-top: 2px;
+}
+
+.scope-empty-guidance-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .btn-gps-shortcut:active {
   transform: scale(0.97);
 }

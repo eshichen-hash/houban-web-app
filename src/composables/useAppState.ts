@@ -18,11 +18,11 @@ interface StoredState {
 }
 
 const state = reactive({
-  location: '台中市西區',
+  location: '',
   radius: 3 as ExploreRadius,
   locationMode: 'current' as ExploreLocationMode,
   selectedParkId: null as string | null,
-  centerCoords: { lat: 24.1507, lng: 120.6632 } as { lat: number; lng: number } | null,
+  centerCoords: null as { lat: number; lng: number } | null,
   dateFilter: 'today' as DateFilter,
   interest: '全部' as EventType | '全部',
   customDate: null as string | null,
@@ -42,10 +42,10 @@ function hydrateState() {
     if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
     if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
     if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
-    if (typeof stored.location === 'string' && stored.location.trim() && stored.location !== '大安區') {
+    if (typeof stored.location === 'string' && stored.location.trim() && stored.location !== '大安區' && stored.location !== '目前位置') {
       state.location = stored.location
     } else {
-      state.location = '台中市西區'
+      state.location = ''
     }
     if (stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10) state.radius = stored.radius
     if (stored.locationMode === 'current' || stored.locationMode === 'district' || stored.locationMode === 'park') state.locationMode = stored.locationMode
@@ -53,7 +53,7 @@ function hydrateState() {
     if (stored.centerCoords && typeof stored.centerCoords.lat === 'number' && typeof stored.centerCoords.lng === 'number') {
       state.centerCoords = stored.centerCoords
     } else {
-      state.centerCoords = { lat: 24.1507, lng: 120.6632 }
+      state.centerCoords = null
     }
   } catch {
     // 本地資料損壞時回到乾淨的示意狀態，不阻擋使用者繼續操作。
@@ -61,24 +61,6 @@ function hydrateState() {
 }
 
 hydrateState()
-
-// 初次載入若沒有自訂座標，嘗試背景觸發一次瀏覽器 GPS
-if (typeof window !== 'undefined' && navigator.geolocation && !state.centerCoords) {
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      if (state.locationMode === 'current' && (!state.centerCoords || state.location === '目前位置')) {
-        state.centerCoords = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        }
-      }
-    },
-    () => {
-      // 忽略定位拒絕
-    },
-    { enableHighAccuracy: true, timeout: 5000 }
-  )
-}
 
 const activeEvents = computed(() => [...eventSeed, ...state.createdEvents])
 

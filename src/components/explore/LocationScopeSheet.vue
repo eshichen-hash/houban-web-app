@@ -526,12 +526,12 @@ onBeforeUnmount(() => {
 
               <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
                 <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
-                <span>{{ isLocating ? '正在取得 GPS 定位...' : `切換回我目前的 GPS 位置（${userGpsCityDistrict || '台中市西區'}）` }}</span>
+                <span>{{ isLocating ? '正在取得 GPS 定位...' : `切換回我目前的 GPS 位置（${userGpsCityDistrict || '目前位置'}）` }}</span>
               </button>
             </div>
 
-            <!-- B. 預設：目前 GPS 位置為主卡片 + 搜尋其他地點按鈕 -->
-            <div v-else class="scope-search-block">
+            <!-- B. 已定位 GPS 位置模式 -->
+            <div v-else-if="draft.location && draft.location !== '目前位置' && draft.location !== '大安區'" class="scope-search-block">
               <div class="current-gps-location-card">
                 <div class="current-gps-icon">
                   <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
                       {{ isLocating ? '定位中...' : '重新定位' }}
                     </button>
                   </div>
-                  <strong>{{ draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? draft.location : '台中市西區' }}</strong>
+                  <strong>{{ draft.location }}</strong>
                   <small>以此處為中心，搜尋周邊半徑內的公園活動</small>
                 </div>
               </div>
@@ -559,6 +559,37 @@ onBeforeUnmount(() => {
               >
                 <Search :size="18" class="search-trigger-icon" aria-hidden="true" />
                 <span class="search-trigger-placeholder">想找其他地點？點此搜尋全台公園...</span>
+              </div>
+            </div>
+
+            <!-- C. 預設空值：尚未選擇位置時的引導選擇卡片 -->
+            <div v-else class="scope-empty-guidance-card">
+              <div class="scope-empty-guidance-header">
+                <div class="current-gps-icon">
+                  <MapPin :size="22" aria-hidden="true" />
+                </div>
+                <div>
+                  <strong>請選擇您的活動搜尋中心</strong>
+                  <small>設定位置後，將為您精準探索周邊半徑內的公園活動</small>
+                </div>
+              </div>
+              <div class="scope-empty-guidance-actions">
+                <button class="button button--primary button--full" type="button" @click="useCurrentLocation">
+                  <LocateFixed :size="18" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
+                  <span>{{ isLocating ? '正在取得 GPS 定位...' : '使用我目前的 GPS 即時位置' }}</span>
+                </button>
+                <div
+                  class="search-trigger-box"
+                  role="button"
+                  tabindex="0"
+                  aria-label="點擊搜尋全台公園或地點"
+                  @click="openDedicatedSearch"
+                  @keydown.enter="openDedicatedSearch"
+                  @keydown.space.prevent="openDedicatedSearch"
+                >
+                  <Search :size="18" class="search-trigger-icon" aria-hidden="true" />
+                  <span class="search-trigger-placeholder">搜尋全台灣地點或公園...</span>
+                </div>
               </div>
             </div>
           </fieldset>
