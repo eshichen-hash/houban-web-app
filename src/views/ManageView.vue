@@ -10,10 +10,11 @@ import {
   MapPin,
   UsersRound,
 } from 'lucide-vue-next'
-import { shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
+import ManageEventCard from '@/components/manage/ManageEventCard.vue'
 import { useAppState } from '@/composables/useAppState'
-import { parks } from '@/data/events'
+import { parks, type EventItem } from '@/data/events'
 
 type ManageSubView = 'edit' | 'attendees' | 'change' | 'end' | null
 
@@ -22,10 +23,36 @@ const { state } = useAppState()
 
 const activeSubView = shallowRef<ManageSubView>(null)
 const toastMessage = shallowRef('')
-const eventStatus = shallowRef<'active' | 'ended' | 'cancelled'>('active')
+const eventStatuses = ref<Record<string, 'active' | 'ended' | 'cancelled'>>({})
+
+const defaultSeedEvent: EventItem = {
+  id: 'seed-walk-manage',
+  title: '樂齡晨間健走',
+  type: '健走',
+  difficulty: '輕鬆',
+  dateKey: 'today',
+  isoDate: '2026-08-16',
+  dateLabel: '8 月 16 日',
+  time: '上午 9:00',
+  park: parks[0] || { id: 'daan-forest', name: '大安森林公園', district: '台北市大安區', address: '', meeting: '2 號出口旁廣場' },
+  spots: 6,
+  maxSpots: 12,
+  cost: '免費',
+  audience: '適合 50 歲以上長輩與初學者',
+  description: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
+  items: '自備飲用水、遮陽帽、穿著運動鞋',
+  distanceKm: 0.8,
+  organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
+}
+
+const allManagedEvents = computed<EventItem[]>(() => {
+  return [defaultSeedEvent, ...state.createdEvents]
+})
+
+const selectedEvent = ref<EventItem>(defaultSeedEvent)
 
 // 編輯活動表單狀態
-const editForm = shallowRef({
+const editForm = ref({
   title: '樂齡晨間健走',
   type: '健走',
   date: '2026-08-16',
@@ -39,6 +66,40 @@ const editForm = shallowRef({
   cost: '免費',
   intro: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
 })
+
+function onOpenEdit(event: EventItem) {
+  selectedEvent.value = event
+  editForm.value = {
+    title: event.title,
+    type: event.type,
+    date: event.isoDate || '2026-09-04',
+    time: event.time.includes('－') ? event.time.split('－')[0].replace(/[^0-9:]/g, '') : '09:00',
+    park: event.park.name,
+    meeting: event.park.meeting || '公園入口處',
+    spots: event.maxSpots || 12,
+    level: event.difficulty || '輕鬆',
+    audience: event.audience || '',
+    items: event.items || '',
+    cost: event.cost || '免費',
+    intro: event.description || '',
+  }
+  activeSubView.value = 'edit'
+}
+
+function onOpenAttendees(event: EventItem) {
+  selectedEvent.value = event
+  activeSubView.value = 'attendees'
+}
+
+function onOpenChange(event: EventItem) {
+  selectedEvent.value = event
+  activeSubView.value = 'change'
+}
+
+function onOpenEnd(event: EventItem) {
+  selectedEvent.value = event
+  activeSubView.value = 'end'
+}
 
 // 報名名單模擬資料
 const attendeeList = [
@@ -58,23 +119,33 @@ function showToast(msg: string) {
 }
 
 function saveEdit() {
+  if (selectedEvent.value) {
+    selectedEvent.value.title = editForm.value.title
+    selectedEvent.value.description = editForm.value.intro
+    selectedEvent.value.items = editForm.value.items
+    selectedEvent.value.audience = editForm.value.audience
+  }
   showToast('已儲存活動變更')
   activeSubView.value = null
 }
 
 function saveChange() {
-  showToast('已更新活動異動資訊')
+  showToast('已更新活動異動資訊並發送提醒')
   activeSubView.value = null
 }
 
 function cancelActivity() {
-  eventStatus.value = 'cancelled'
+  if (selectedEvent.value) {
+    eventStatuses.value[selectedEvent.value.id] = 'cancelled'
+  }
   showToast('已取消這場活動')
   activeSubView.value = null
 }
 
 function markActivityEnd() {
-  eventStatus.value = 'ended'
+  if (selectedEvent.value) {
+    eventStatuses.value[selectedEvent.value.id] = 'ended'
+  }
   showToast('已將活動標記為結束')
   activeSubView.value = null
 }
@@ -95,9 +166,9 @@ function markActivityEnd() {
         <strong v-else-if="activeSubView === 'end'">活動結束</strong>
 
         <small v-if="!activeSubView">我發起的活動</small>
-        <small v-else-if="activeSubView === 'edit'">尚在報名中</small>
-        <small v-else-if="activeSubView === 'attendees'">6／12 人</small>
-        <small v-else-if="activeSubView === 'change'">{{ editForm.title }}</small>
+        <small v-else-if="activeSubView === 'edit'">{{ selectedEvent.title }}</small>
+        <small v-else-if="activeSubView === 'attendees'">{{ selectedEvent.spots || 6 }}／{{ selectedEvent.maxSpots || 12 }} 人</small>
+        <small v-else-if="activeSubView === 'change'">{{ selectedEvent.title }}</small>
         <small v-else-if="activeSubView === 'end'">完成活動管理</small>
       </div>
       <span class="subpage-header__spacer" aria-hidden="true"></span>
@@ -110,69 +181,16 @@ function markActivityEnd() {
       <p class="page-intro">查看報名、編輯內容或處理活動異動。</p>
 
       <section class="manage-grid" style="margin-bottom: 24px;">
-        <!-- 活動卡片 -->
-        <article class="card" style="padding: 20px; background: rgba(255, 253, 248, 0.95); border: 1px solid var(--line); border-radius: 20px;">
-          <!-- 頂部標籤 -->
-          <div class="manage-card-topline">
-            <span v-if="eventStatus === 'active'" class="tag tag--success">報名中</span>
-            <span v-else-if="eventStatus === 'ended'" class="tag">已結束</span>
-            <span v-else-if="eventStatus === 'cancelled'" class="tag" style="background: #fee2e2; color: #b91c1c;">已取消</span>
-
-            <span class="tag tag--info">6／12 人</span>
-          </div>
-
-          <h2 style="margin: 8px 0 12px; font-size: 1.35rem; color: var(--ink);">{{ editForm.title }}</h2>
-
-          <div style="display: grid; gap: 6px; margin-bottom: 16px; color: var(--ink-soft); font-size: 0.95rem;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <CalendarDays :size="18" style="color: #2b5e40;" aria-hidden="true" />
-              <span>8 月 16 日・上午 9:00</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <MapPin :size="18" style="color: #2b5e40;" aria-hidden="true" />
-              <span>{{ editForm.park }}</span>
-            </div>
-          </div>
-
-          <!-- 2x2 操作按鈕群 -->
-          <div class="manage-actions-grid">
-            <button class="manage-action-btn" type="button" @click="activeSubView = 'edit'">
-              <Edit3 :size="18" aria-hidden="true" />
-              <span>編輯</span>
-            </button>
-            <button class="manage-action-btn" type="button" @click="activeSubView = 'attendees'">
-              <UsersRound :size="18" aria-hidden="true" />
-              <span>報名名單</span>
-            </button>
-            <button class="manage-action-btn" type="button" @click="activeSubView = 'change'">
-              <AlertTriangle :size="18" aria-hidden="true" />
-              <span>異動／取消</span>
-            </button>
-            <button class="manage-action-btn" type="button" @click="activeSubView = 'end'">
-              <Check :size="18" aria-hidden="true" />
-              <span>活動結束</span>
-            </button>
-          </div>
-        </article>
-
-        <!-- 若有新增的活動也列出 -->
-        <article v-for="event in state.createdEvents" :key="event.id" class="card" style="padding: 20px; background: rgba(255, 253, 248, 0.95); border: 1px solid var(--line); border-radius: 20px;">
-          <div class="manage-card-topline">
-            <span class="tag tag--success">進行中</span>
-            <span class="tag tag--info">{{ event.spots }} 人</span>
-          </div>
-          <h2 style="margin: 8px 0 12px; font-size: 1.35rem; color: var(--ink);">{{ event.title }}</h2>
-          <div style="display: grid; gap: 6px; margin-bottom: 16px; color: var(--ink-soft); font-size: 0.95rem;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <CalendarDays :size="18" style="color: #2b5e40;" aria-hidden="true" />
-              <span>{{ event.dateLabel }}・{{ event.time }}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <MapPin :size="18" style="color: #2b5e40;" aria-hidden="true" />
-              <span>{{ event.park.name }}</span>
-            </div>
-          </div>
-        </article>
+        <ManageEventCard
+          v-for="event in allManagedEvents"
+          :key="event.id"
+          :event="event"
+          :status="eventStatuses[event.id] || 'active'"
+          @edit="onOpenEdit"
+          @attendees="onOpenAttendees"
+          @change="onOpenChange"
+          @end="onOpenEnd"
+        />
       </section>
 
       <button class="button button--primary button--full" type="button" @click="router.push('/create')">

@@ -77,8 +77,8 @@ export interface EventItem {
   audience: string
   description: string
   items: string
-  image: string
-  imageAlt: string
+  image?: string
+  imageAlt?: string
   distanceKm?: number
   organizer: {
     name: string

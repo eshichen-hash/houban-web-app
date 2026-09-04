@@ -22,6 +22,7 @@ import { computed, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandLogo from '@/components/BrandLogo.vue'
 import EventCard from '@/components/EventCard.vue'
+import ManageEventCard from '@/components/manage/ManageEventCard.vue'
 import { useAppState } from '@/composables/useAppState'
 import { parks, type EventItem } from '@/data/events'
 
@@ -52,6 +53,30 @@ const todayEvent = computed(() => registeredEvents.value[0] ?? null)
 const todayDateLabel = computed(() => {
   const d = new Date()
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`
+})
+
+const defaultCreatedSeedEvent: EventItem = {
+  id: 'seed-walk-manage',
+  title: '樂齡晨間健走',
+  type: '健走',
+  difficulty: '輕鬆',
+  dateKey: 'today',
+  isoDate: '2026-08-16',
+  dateLabel: '8 月 16 日',
+  time: '上午 9:00',
+  park: parks[0] || { id: 'daan-forest', name: '大安森林公園', district: '台北市大安區', address: '', meeting: '2 號出口旁廣場' },
+  spots: 6,
+  maxSpots: 12,
+  cost: '免費',
+  audience: '適合 50 歲以上長輩與初學者',
+  description: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
+  items: '自備飲用水、遮陽帽、穿著運動鞋',
+  distanceKm: 0.8,
+  organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
+}
+
+const myOrganizedEvents = computed<readonly EventItem[]>(() => {
+  return state.createdEvents.length > 0 ? state.createdEvents : [defaultCreatedSeedEvent]
 })
 
 function toggleNotificationExpand(id: string) {
@@ -236,27 +261,44 @@ function saveSettings() {
       </div>
 
       <div v-else-if="currentActivityTab === '我發起的'" class="result-list">
-        <article v-for="event in state.createdEvents" :key="event.id" class="manage-card">
-          <div class="manage-card__status">進行中</div>
-          <h2>{{ event.title }}</h2>
-          <p>{{ event.dateLabel }}・{{ event.time }}</p>
-          <p>{{ event.park.name }}</p>
-          <button class="button button--primary button--full" type="button" style="margin-top: 10px;" @click="router.push('/manage')">管理活動</button>
-        </article>
-        <article v-if="!state.createdEvents.length" class="manage-card">
-          <div class="manage-card__status">報名中</div>
-          <h2>樂齡晨間健走</h2>
-          <p>8 月 16 日・大安森林公園</p>
-          <button class="button button--primary button--full" type="button" style="margin-top: 10px;" @click="router.push('/manage')">管理活動</button>
-        </article>
+        <ManageEventCard
+          v-for="event in myOrganizedEvents"
+          :key="event.id"
+          :event="event"
+          @edit="router.push('/manage')"
+          @attendees="router.push('/manage')"
+          @change="router.push('/manage')"
+          @end="router.push('/manage')"
+        />
       </div>
 
       <div v-else-if="currentActivityTab === '已結束'" class="result-list">
-        <article class="manage-card">
-          <div class="manage-card__status" style="background: #e2e8f0; color: #475569;">已結束</div>
-          <h2>公園午後散步</h2>
-          <p>8 月 2 日・中正紀念堂園區</p>
-        </article>
+        <ManageEventCard
+          :event="{
+            id: 'ended-walk-archive',
+            title: '公園午後散步',
+            type: '散步',
+            difficulty: '輕鬆',
+            dateKey: 'today',
+            isoDate: '2026-08-02',
+            dateLabel: '8 月 2 日',
+            time: '下午 3:00',
+            park: parks[1] || { id: 'cksm', name: '中正紀念堂園區', district: '台北市中正區', address: '', meeting: '大門階梯前' },
+            spots: 8,
+            maxSpots: 8,
+            cost: '免費',
+            audience: '全年齡皆宜',
+            description: '午後散步交流。',
+            items: '水壺、遮陽傘',
+            distanceKm: 1.2,
+            organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
+          }"
+          status="ended"
+          @edit="router.push('/manage')"
+          @attendees="router.push('/manage')"
+          @change="router.push('/manage')"
+          @end="router.push('/manage')"
+        />
       </div>
     </main>
 
