@@ -116,33 +116,7 @@ function saveSettings() {
     </header>
 
     <!-- 1. 主畫面 (#my) -->
-    <main v-if="!currentSubView" class="page-content my-content" aria-labelledby="my-title">
-      <!-- 英雄卡片 (Hero) -->
-      <section class="hero" aria-label="今日行程概覽">
-        <div class="hero-copy">
-          <span class="eyebrow">我的今天</span>
-          <h1 id="my-title">早安，今天有 {{ registeredEvents.length ? registeredEvents.length : 1 }} 個行程</h1>
-          <p>活動開始前，記得帶水並提前 10 分鐘抵達。</p>
-          <div class="hero-actions">
-            <button class="button button--primary" type="button" @click="currentSubView = 'activities'">
-              查看我的活動
-            </button>
-          </div>
-        </div>
-        <div class="hero-art" aria-hidden="true">
-          <svg viewBox="0 0 220 170" fill="none" style="width: 100%; height: 100%;">
-            <circle cx="110" cy="82" r="70" fill="currentColor" opacity=".08"/>
-            <path d="M29 133h162" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity=".3"/>
-            <path d="M48 134V83M36 87h24L48 42 36 87Z" fill="#15803d" opacity=".78"/>
-            <path d="M172 134V78M157 83h30l-15-50-15 50Z" fill="#b45309" opacity=".72"/>
-            <circle cx="90" cy="66" r="10" fill="#f59e0b"/>
-            <path d="M89 77v31m0-18-16 15m16-12 18 10m-18 5-12 25m12-25 17 25" stroke="#1d4ed8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="130" cy="72" r="10" fill="#dc2626"/>
-            <path d="M130 83v29m0-18-15 12m15-11 16 9m-16 8-10 22m10-22 15 22" stroke="#ea580c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-      </section>
-
+    <main v-if="!currentSubView" class="page-content my-content" aria-label="我的個人專區">
       <!-- 今日行程 (Timeline) -->
       <section class="section" style="margin-bottom: 26px;">
         <div class="section-heading">
