@@ -1,5 +1,13 @@
-import { computed, reactive, readonly, shallowRef, watch } from 'vue'
+import { computed, reactive, readonly, ref, shallowRef, watch } from 'vue'
 import { activityTypes, eventSeed, parks, type DateFilter, type EventItem, type EventType } from '@/data/events'
+import { createEventInSupabase, fetchEventsFromSupabase } from '@/services/eventService'
+import {
+  addFavoriteInSupabase,
+  fetchMyFavorites,
+  fetchMyRegistrations,
+  registerEventInSupabase,
+  removeFavoriteInSupabase,
+} from '@/services/registrationService'
 import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
 
 const STORAGE_KEY = 'park-good-companion-vue-state'
@@ -30,6 +38,39 @@ const state = reactive({
   registered: [] as string[],
   createdEvents: [] as EventItem[],
 })
+
+const cloudEvents = ref<EventItem[]>([])
+const isCloudLoaded = ref(false)
+
+async function syncWithCloud() {
+  try {
+    const [remoteEvents, remoteRegistrations, remoteFavorites] = await Promise.all([
+      fetchEventsFromSupabase(),
+      fetchMyRegistrations(),
+      fetchMyFavorites(),
+    ])
+
+    if (remoteEvents.length > 0) {
+      cloudEvents.value = remoteEvents
+      isCloudLoaded.value = true
+    }
+
+    if (remoteRegistrations.length > 0) {
+      const merged = new Set([...state.registered, ...remoteRegistrations])
+      state.registered = Array.from(merged)
+    }
+
+    if (remoteFavorites.length > 0) {
+      const merged = new Set([...state.favorites, ...remoteFavorites])
+      state.favorites = Array.from(merged)
+    }
+  } catch (err) {
+    console.warn('Sync with Supabase cloud encountered an issue:', err)
+  }
+}
+
+// 立即觸發雲端初始化同步
+syncWithCloud()
 
 function hydrateState() {
   if (typeof window === 'undefined') return
@@ -62,7 +103,15 @@ function hydrateState() {
 
 hydrateState()
 
-const activeEvents = computed(() => [...eventSeed, ...state.createdEvents])
+const activeEvents = computed(() => {
+  if (cloudEvents.value.length > 0) {
+    // 當有雲端活動時，同時確保使用者本地建立的暫存活動也在清單中
+    const remoteIds = new Set(cloudEvents.value.map((e) => e.id))
+    const localNew = state.createdEvents.filter((e) => !remoteIds.has(e.id))
+    return [...localNew, ...cloudEvents.value]
+  }
+  return [...state.createdEvents, ...eventSeed]
+})
 
 function eventMatchesDate(event: EventItem, dateFilter: DateFilter, customDate: string | null) {
   if (dateFilter === 'week') return true
@@ -86,8 +135,13 @@ export function useAppState() {
 
   function toggleFavorite(id: string) {
     const index = state.favorites.indexOf(id)
-    if (index >= 0) state.favorites.splice(index, 1)
-    else state.favorites.push(id)
+    if (index >= 0) {
+      state.favorites.splice(index, 1)
+      removeFavoriteInSupabase(id)
+    } else {
+      state.favorites.push(id)
+      addFavoriteInSupabase(id)
+    }
   }
 
   function setDateFilter(value: Exclude<DateFilter, 'custom'>) {
@@ -113,16 +167,23 @@ export function useAppState() {
   }
 
   function registerEvent(id: string) {
-    if (!state.registered.includes(id)) state.registered.push(id)
+    if (!state.registered.includes(id)) {
+      state.registered.push(id)
+      registerEventInSupabase(id)
+    }
   }
 
   function createEvent(input: Omit<EventItem, 'id' | 'organizer'>) {
     const created: EventItem = {
       ...input,
       id: `created-${Date.now()}`,
-      organizer: { name: '我', role: '活動發起人', rating: '新加入', organized: 0, verified: false },
+      organizer: { name: '我', role: '活動發起人', rating: '新加入', organized: 1, verified: true },
     }
-    state.createdEvents.push(created)
+    state.createdEvents.unshift(created)
+    if (cloudEvents.value.length > 0) {
+      cloudEvents.value.unshift(created)
+    }
+    createEventInSupabase(created)
     return created
   }
 
@@ -134,6 +195,7 @@ export function useAppState() {
     registeredEvents,
     activityTypes,
     parks,
+    isCloudLoaded,
     getEvent,
     toggleFavorite,
     setDateFilter,
@@ -142,6 +204,7 @@ export function useAppState() {
     setExploreScope,
     registerEvent,
     createEvent,
+    syncWithCloud,
   }
 }
 

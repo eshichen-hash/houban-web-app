@@ -15,6 +15,7 @@ import { useRouter } from 'vue-router'
 import ManageEventCard from '@/components/manage/ManageEventCard.vue'
 import { useAppState } from '@/composables/useAppState'
 import { parks, type EventItem } from '@/data/events'
+import { updateEventInSupabase, updateEventStatusInSupabase } from '@/services/eventService'
 
 type ManageSubView = 'edit' | 'attendees' | 'change' | 'end' | null
 
@@ -124,12 +125,25 @@ function saveEdit() {
     selectedEvent.value.description = editForm.value.intro
     selectedEvent.value.items = editForm.value.items
     selectedEvent.value.audience = editForm.value.audience
+
+    updateEventInSupabase(selectedEvent.value.id, {
+      title: editForm.value.title,
+      description: editForm.value.intro,
+      items: editForm.value.items,
+      audience: editForm.value.audience,
+    })
   }
   showToast('已儲存活動變更')
   activeSubView.value = null
 }
 
 function saveChange() {
+  if (selectedEvent.value) {
+    updateEventInSupabase(selectedEvent.value.id, {
+      time: editForm.value.time,
+      park_meeting: editForm.value.meeting,
+    })
+  }
   showToast('已更新活動異動資訊並發送提醒')
   activeSubView.value = null
 }
@@ -137,6 +151,7 @@ function saveChange() {
 function cancelActivity() {
   if (selectedEvent.value) {
     eventStatuses.value[selectedEvent.value.id] = 'cancelled'
+    updateEventStatusInSupabase(selectedEvent.value.id, 'cancelled')
   }
   showToast('已取消這場活動')
   activeSubView.value = null
@@ -145,6 +160,7 @@ function cancelActivity() {
 function markActivityEnd() {
   if (selectedEvent.value) {
     eventStatuses.value[selectedEvent.value.id] = 'ended'
+    updateEventStatusInSupabase(selectedEvent.value.id, 'ended')
   }
   showToast('已將活動標記為結束')
   activeSubView.value = null
