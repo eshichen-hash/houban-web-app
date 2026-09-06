@@ -65,7 +65,9 @@ do $$
 begin
   if has_table_privilege('anon', 'public.registrations', 'SELECT')
     or has_table_privilege('anon', 'public.favorites', 'SELECT')
-    or has_table_privilege('anon', 'public.events', 'INSERT') then
+    or has_table_privilege('anon', 'public.events', 'INSERT')
+    or has_table_privilege('anon', 'public.parks', 'INSERT')
+    or not has_table_privilege('anon', 'public.parks', 'SELECT') then
     raise exception 'anonymous table privileges are broader than intended';
   end if;
 
