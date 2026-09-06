@@ -172,3 +172,38 @@ export async function updateEventInSupabase(id: string, updates: Partial<EventRo
     return false
   }
 }
+
+export async function deleteEventInSupabase(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('events').delete().eq('id', id)
+    if (error) {
+      console.error('Supabase delete event error:', error)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('Failed to delete event in Supabase:', err)
+    return false
+  }
+}
+
+export async function fetchOrganizerEventsFromSupabase(organizerId: string = 'user-me'): Promise<EventItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('organizer_id', organizerId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('Supabase fetch organizer events error:', error.message)
+      return []
+    }
+
+    return (data || []).map(mapRowToEvent)
+  } catch (err) {
+    console.warn('Failed to fetch organizer events from Supabase:', err)
+    return []
+  }
+}
+

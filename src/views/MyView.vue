@@ -34,7 +34,7 @@ import { shareActivityToLine } from '@/services/liffService'
 import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const router = useRouter()
-const { state, favoriteEvents, registeredEvents, toggleFavorite, liffProfile } = useAppState()
+const { state, favoriteEvents, registeredEvents, toggleFavorite, liffProfile, unregisterEvent } = useAppState()
 
 const currentSubView = shallowRef<SubView | null>(null)
 const currentActivityTab = shallowRef<ActivityTab>('即將開始')
@@ -105,6 +105,11 @@ function navigateToMeeting(event?: EventItem) {
   if (!ev) return
   const p = ev.park
   openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
+}
+
+async function handleCancelRegistration(eventId: string) {
+  const res = await unregisterEvent(eventId)
+  showToast(res.message)
 }
 
 function openEvent(event: EventItem) {
@@ -448,6 +453,9 @@ function saveSettings() {
                   <MessageCircle :size="16" aria-hidden="true" />
                   LINE 邀請朋友
                 </button>
+                <button class="button button--small" type="button" style="background: #fff; color: #dc2626; border: 1px solid #fca5a5;" @click="handleCancelRegistration(event.id)">
+                  取消報名
+                </button>
               </div>
             </div>
           </template>
@@ -510,6 +518,9 @@ function saveSettings() {
                 <button class="button button--secondary button--small" type="button" @click="shareEvent(event)">
                   <MessageCircle :size="16" aria-hidden="true" />
                   LINE 邀請朋友
+                </button>
+                <button class="button button--small" type="button" style="background: #fff; color: #dc2626; border: 1px solid #fca5a5;" @click="handleCancelRegistration(event.id)">
+                  取消報名
                 </button>
               </div>
             </div>

@@ -10,21 +10,24 @@ import {
   MapPin,
   UsersRound,
 } from 'lucide-vue-next'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ManageEventCard from '@/components/manage/ManageEventCard.vue'
 import { useAppState } from '@/composables/useAppState'
 import { parks, type EventItem } from '@/data/events'
 import { updateEventInSupabase, updateEventStatusInSupabase } from '@/services/eventService'
+import type { ParticipantItem } from '@/services/registrationService'
 
 type ManageSubView = 'edit' | 'attendees' | 'change' | 'end' | null
 
 const router = useRouter()
-const { state } = useAppState()
+const { state, getEventParticipants, checkInAttendee } = useAppState()
 
 const activeSubView = shallowRef<ManageSubView>(null)
 const toastMessage = shallowRef('')
 const eventStatuses = ref<Record<string, 'active' | 'ended' | 'cancelled'>>({})
+const participants = ref<ParticipantItem[]>([])
+const isLoadingParticipants = shallowRef(false)
 
 const defaultSeedEvent: EventItem = {
   id: 'seed-walk-manage',
@@ -87,9 +90,35 @@ function onOpenEdit(event: EventItem) {
   activeSubView.value = 'edit'
 }
 
-function onOpenAttendees(event: EventItem) {
+async function onOpenAttendees(event: EventItem) {
   selectedEvent.value = event
   activeSubView.value = 'attendees'
+  isLoadingParticipants.value = true
+  try {
+    const list = await getEventParticipants(event.id)
+    if (list.length > 0) {
+      participants.value = list
+    } else {
+      // 模擬預設名單
+      participants.value = [
+        { id: '1', userId: 'u1', userName: '王美華', checkInStatus: 'pending', registeredAt: '今天' },
+        { id: '2', userId: 'u2', userName: '陳志明', checkInStatus: 'pending', registeredAt: '今天' },
+        { id: '3', userId: 'u3', userName: '李秀琴', checkInStatus: 'pending', registeredAt: '昨天' },
+        { id: '4', userId: 'u4', userName: '張國雄', checkInStatus: 'pending', registeredAt: '昨天' },
+      ]
+    }
+  } catch {
+    participants.value = []
+  } finally {
+    isLoadingParticipants.value = false
+  }
+}
+
+async function toggleCheckIn(person: ParticipantItem) {
+  const nextStatus = person.checkInStatus === 'checked_in' ? 'pending' : 'checked_in'
+  person.checkInStatus = nextStatus
+  await checkInAttendee(selectedEvent.value.id, person.userId, nextStatus)
+  showToast(nextStatus === 'checked_in' ? `已完成 ${person.userName} 簽到` : `已取消 ${person.userName} 簽到`)
 }
 
 function onOpenChange(event: EventItem) {
@@ -101,16 +130,6 @@ function onOpenEnd(event: EventItem) {
   selectedEvent.value = event
   activeSubView.value = 'end'
 }
-
-// 報名名單模擬資料
-const attendeeList = [
-  { name: '王美華', initial: '王', status: '已報名', tag: '已確認' },
-  { name: '陳志明', initial: '陳', status: '已報名', tag: '已確認' },
-  { name: '李秀琴', initial: '李', status: '已報名', tag: '已確認' },
-  { name: '張國雄', initial: '張', status: '已報名', tag: '已確認' },
-  { name: '周玉蘭', initial: '周', status: '已報名', tag: '已確認' },
-  { name: '黃建成', initial: '黃', status: '已報名', tag: '已確認' },
-]
 
 function showToast(msg: string) {
   toastMessage.value = msg
@@ -277,19 +296,46 @@ function markActivityEnd() {
 
     <!-- 3. 子頁面：報名名單 (attendees) -->
     <main v-else-if="activeSubView === 'attendees'" class="page-content">
-      <div class="eyebrow">報名名單</div>
-      <h1>已有 6 人參加</h1>
-      <p class="page-intro">{{ editForm.title }}・名額 12 人</p>
+      <div class="eyebrow">報名名單與簽到</div>
+      <h1>已有 {{ participants.length }} 人參加</h1>
+      <p class="page-intro">{{ selectedEvent.title }}・上限 {{ selectedEvent.maxSpots || 12 }} 人</p>
 
-      <div class="attendee-list" style="margin-bottom: 24px;">
-        <div v-for="person in attendeeList" :key="person.name" class="attendee-card">
-          <div class="attendee-avatar">{{ person.initial }}</div>
-          <div class="attendee-info">
-            <strong>{{ person.name }}</strong>
-            <span>{{ person.status }}</span>
+      <div v-if="isLoadingParticipants" style="text-align: center; padding: 30px; color: var(--ink-soft);">
+        正在載入名冊中...
+      </div>
+
+      <div v-else-if="participants.length > 0" class="attendee-list" style="margin-bottom: 24px; display: grid; gap: 10px;">
+        <div
+          v-for="person in participants"
+          :key="person.id"
+          class="attendee-card"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #fff; border-radius: 14px; border: 1px solid var(--line);"
+        >
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <img v-if="person.userAvatar" :src="person.userAvatar" alt="" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />
+            <div v-else class="attendee-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #2b5e40; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800;">
+              {{ person.userName.charAt(0) }}
+            </div>
+            <div class="attendee-info">
+              <strong style="font-size: 1.05rem; display: block;">{{ person.userName }}</strong>
+              <small style="color: var(--ink-soft);">報名時間：{{ person.registeredAt }}</small>
+            </div>
           </div>
-          <span class="tag tag--success">{{ person.tag }}</span>
+
+          <button
+            class="button button--small"
+            :class="person.checkInStatus === 'checked_in' ? 'button--primary' : 'button--secondary'"
+            type="button"
+            style="padding: 6px 14px; font-size: 0.85rem;"
+            @click="toggleCheckIn(person)"
+          >
+            {{ person.checkInStatus === 'checked_in' ? '✓ 已簽到' : '點擊簽到' }}
+          </button>
         </div>
+      </div>
+
+      <div v-else class="empty-state" style="text-align: center; padding: 32px 16px;">
+        <p>目前尚無參加者報名</p>
       </div>
 
       <button class="button button--secondary button--full" type="button" @click="activeSubView = null">

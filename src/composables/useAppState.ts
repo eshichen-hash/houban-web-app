@@ -120,6 +120,12 @@ function eventMatchesDate(event: EventItem, dateFilter: DateFilter, customDate: 
 }
 
 import { useLiff } from '@/services/liffService'
+import {
+  checkInParticipantInSupabase,
+  fetchEventParticipants,
+  unregisterEventInSupabase,
+  type ParticipantItem,
+} from '@/services/registrationService'
 
 export function useAppState() {
   const { liffState } = useLiff()
@@ -171,14 +177,79 @@ export function useAppState() {
     state.centerCoords = scope.centerCoords ?? null
   }
 
-  function registerEvent(id: string) {
+  /**
+   * 探索參加者：報名活動 (原子鎖定名額扣減 + 樂觀更新)
+   */
+  async function registerEvent(id: string, participantName?: string): Promise<{ success: boolean; message: string }> {
     const liffUser = liffState.profile
-    if (!state.registered.includes(id)) {
-      state.registered.push(id)
-      registerEventInSupabase(id, liffUser?.userId || 'user-me', liffUser?.displayName || '林淑芬')
+    const userId = liffUser?.userId || 'user-me'
+    const userName = participantName || liffUser?.displayName || '林淑芬'
+    const userAvatar = liffUser?.pictureUrl || undefined
+
+    const targetEvent = getEvent(id)
+    if (targetEvent && targetEvent.spots <= 0) {
+      return { success: false, message: '很抱歉，此活動名額已額滿！' }
     }
+
+    // 樂觀更新前端狀態
+    const wasRegistered = state.registered.includes(id)
+    if (!wasRegistered) {
+      state.registered.push(id)
+      if (targetEvent && targetEvent.spots > 0) {
+        targetEvent.spots = Math.max(0, targetEvent.spots - 1)
+      }
+    }
+
+    const res = await registerEventInSupabase(id, userId, userName, userAvatar)
+    if (!res.success) {
+      // 伺服器拒絕時回滾前端狀態
+      const idx = state.registered.indexOf(id)
+      if (idx >= 0 && !wasRegistered) {
+        state.registered.splice(idx, 1)
+      }
+      if (targetEvent) {
+        targetEvent.spots += 1
+      }
+      return res
+    }
+
+    return { success: true, message: '報名成功！' }
   }
 
+  /**
+   * 探索參加者：取消報名 (原子回補名額 + 樂觀更新)
+   */
+  async function unregisterEvent(id: string): Promise<{ success: boolean; message: string }> {
+    const liffUser = liffState.profile
+    const userId = liffUser?.userId || 'user-me'
+
+    const targetEvent = getEvent(id)
+    const idx = state.registered.indexOf(id)
+    if (idx >= 0) {
+      state.registered.splice(idx, 1)
+      if (targetEvent) {
+        targetEvent.spots = Math.min(targetEvent.maxSpots, targetEvent.spots + 1)
+      }
+    }
+
+    const res = await unregisterEventInSupabase(id, userId)
+    if (!res.success) {
+      // 回滾
+      if (idx >= 0 && !state.registered.includes(id)) {
+        state.registered.push(id)
+      }
+      if (targetEvent) {
+        targetEvent.spots = Math.max(0, targetEvent.spots - 1)
+      }
+      return res
+    }
+
+    return { success: true, message: '已取消報名，名額已釋出。' }
+  }
+
+  /**
+   * 活動發起人：發布新活動
+   */
   function createEvent(input: Omit<EventItem, 'id' | 'organizer'>) {
     const liffUser = liffState.profile
     const created: EventItem = {
@@ -187,7 +258,7 @@ export function useAppState() {
       organizer: {
         name: liffUser?.displayName || '我',
         role: '活動發起人',
-        rating: '新加入',
+        rating: '5.0',
         organized: 1,
         verified: true,
       },
@@ -198,6 +269,24 @@ export function useAppState() {
     }
     createEventInSupabase(created)
     return created
+  }
+
+  /**
+   * 活動發起人：取得指定活動之報名名冊
+   */
+  async function getEventParticipants(eventId: string): Promise<ParticipantItem[]> {
+    return await fetchEventParticipants(eventId)
+  }
+
+  /**
+   * 活動發起人：現場簽到
+   */
+  async function checkInAttendee(
+    eventId: string,
+    userId: string,
+    status: 'checked_in' | 'absent' | 'pending' = 'checked_in'
+  ): Promise<boolean> {
+    return await checkInParticipantInSupabase(eventId, userId, status)
   }
 
   return {
@@ -217,7 +306,10 @@ export function useAppState() {
     setInterest,
     setExploreScope,
     registerEvent,
+    unregisterEvent,
     createEvent,
+    getEventParticipants,
+    checkInAttendee,
     syncWithCloud,
   }
 }

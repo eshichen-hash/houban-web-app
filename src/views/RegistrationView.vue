@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, CalendarDays, Clock3, MapPin } from 'lucide-vue-next'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppState } from '@/composables/useAppState'
 
@@ -9,6 +9,8 @@ const router = useRouter()
 const { getEvent, registerEvent, state } = useAppState()
 const event = computed(() => getEvent(String(route.params.id)))
 const isAlreadyRegistered = computed(() => Boolean(event.value && state.registered.includes(event.value.id)))
+const isSubmitting = shallowRef(false)
+const errorMessage = shallowRef('')
 
 onMounted(() => {
   if (isAlreadyRegistered.value && event.value) {
@@ -16,12 +18,28 @@ onMounted(() => {
   }
 })
 
-function confirmRegistration() {
-  if (!event.value) return
-  if (!isAlreadyRegistered.value) {
-    registerEvent(event.value.id)
+async function confirmRegistration() {
+  if (!event.value || isSubmitting.value) return
+  if (isAlreadyRegistered.value) {
+    router.push(`/success/${event.value.id}`)
+    return
   }
-  router.push(`/success/${event.value.id}`)
+
+  isSubmitting.value = true
+  errorMessage.value = ''
+
+  try {
+    const res = await registerEvent(event.value.id)
+    if (res.success) {
+      router.push(`/success/${event.value.id}`)
+    } else {
+      errorMessage.value = res.message || '報名失敗，請稍後再試'
+    }
+  } catch (err: any) {
+    errorMessage.value = err?.message || '網路連線異常，請稍後再試'
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -36,12 +54,18 @@ function confirmRegistration() {
       <div class="eyebrow">最後一步</div>
       <h1 id="registration-title">確認活動資訊</h1>
       <p class="page-intro">不用再填寫資料，確認無誤後即可完成報名。</p>
+      
+      <div v-if="errorMessage" class="notice notice--alert" style="background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; padding: 12px 14px; border-radius: 14px; margin-bottom: 14px; font-weight: 800;">
+        ⚠️ {{ errorMessage }}
+      </div>
+
       <section class="summary-card">
         <h2>{{ event.title }}</h2>
         <dl>
           <div><dt>日期</dt><dd><CalendarDays :size="18" aria-hidden="true" />{{ event.dateLabel }}</dd></div>
           <div><dt>時間</dt><dd><Clock3 :size="18" aria-hidden="true" />{{ event.time }}</dd></div>
           <div><dt>地點</dt><dd><MapPin :size="18" aria-hidden="true" /><span>{{ event.park.name }}<small>{{ event.park.meeting }}</small></span></dd></div>
+          <div><dt>剩餘名額</dt><dd>{{ event.spots > 0 ? `尚有 ${event.spots} 位` : '已額滿' }}</dd></div>
           <div><dt>費用</dt><dd>{{ event.cost }}</dd></div>
           <div><dt>攜帶物品</dt><dd>{{ event.items }}</dd></div>
         </dl>
@@ -50,12 +74,22 @@ function confirmRegistration() {
         <Clock3 :size="22" style="flex: 0 0 auto; margin-top: 2px; color: #854d0e;" aria-hidden="true" />
         <div>
           <strong style="color: #854d0e; font-size: 1.05rem;">請提前 10 分鐘抵達</strong>
-          <p style="margin: 2px 0 0; font-size: 0.88rem; color: #854d0e;">若臨時無法參加，可到「我的活動」查看活動資訊。</p>
+          <p style="margin: 2px 0 0; font-size: 0.88rem; color: #854d0e;">若臨時無法參加，可隨時在「我的活動」取消報名釋出名額。</p>
         </div>
       </aside>
     </main>
     <div class="page-actions" style="margin-top: 24px; padding: 16px; background: rgba(255, 253, 248, 0.88); border: 1px solid var(--line); border-radius: 18px; display: grid; gap: 10px;">
-      <button class="button button--primary button--full" type="button" style="background: #4a7c59; border-color: #4a7c59;" @click="confirmRegistration">確認報名 <span aria-hidden="true">✓</span></button>
+      <button
+        class="button button--primary button--full"
+        type="button"
+        :disabled="isSubmitting || event.spots <= 0"
+        style="background: #4a7c59; border-color: #4a7c59;"
+        @click="confirmRegistration"
+      >
+        <span v-if="isSubmitting">報名處理中...</span>
+        <span v-else-if="event.spots <= 0">此活動已額滿</span>
+        <span v-else>確認報名 <span aria-hidden="true">✓</span></span>
+      </button>
       <button class="button button--text button--full" type="button" @click="router.back">返回活動詳情</button>
     </div>
   </div>
