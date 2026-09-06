@@ -1,28 +1,24 @@
 <script setup lang="ts">
 import {
+  AlertTriangle,
   ArrowRight,
   CalendarDays,
   Check,
-  ChevronRight,
   Clock3,
   MapPin,
-  MessageCircle,
-  Navigation,
   UsersRound,
 } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import CalendarChoiceDialog from '@/components/CalendarChoiceDialog.vue'
 import { useAppState } from '@/composables/useAppState'
-import { shareActivityToLine } from '@/services/liffService'
-import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const route = useRoute()
 const router = useRouter()
-const { getEvent } = useAppState()
+const { getEvent, unregisterEvent } = useAppState()
 const event = computed(() => getEvent(String(route.params.id)))
 const toastMessage = shallowRef('')
-const showCalendarDialog = shallowRef(false)
+const showCancelModal = shallowRef(false)
+const isCancelling = shallowRef(false)
 
 function showToast(msg: string) {
   toastMessage.value = msg
@@ -31,24 +27,25 @@ function showToast(msg: string) {
   }, 2200)
 }
 
-function addToCalendar() {
-  showCalendarDialog.value = true
+function openCancelModal() {
+  showCancelModal.value = true
 }
 
-function onCalendarAdded(type: 'google' | 'apple') {
-  showToast(type === 'google' ? '已為您開啟 Google 日曆！' : '已下載行事曆檔，請確認加入手機日曆！')
-}
-
-function navigateToMeeting() {
-  if (!event.value) return
-  const p = event.value.park
-  openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
-}
-
-async function inviteFriends() {
-  if (!event.value) return
-  const res = await shareActivityToLine(event.value)
-  showToast(res.message)
+async function confirmCancelRegistration() {
+  if (!event.value || isCancelling.value) return
+  isCancelling.value = true
+  try {
+    const res = await unregisterEvent(event.value.id)
+    showToast(res.message)
+    showCancelModal.value = false
+    setTimeout(() => {
+      router.push('/explore')
+    }, 1200)
+  } catch (err: any) {
+    showToast(err?.message || '取消失敗，請稍後再試')
+  } finally {
+    isCancelling.value = false
+  }
 }
 </script>
 
@@ -109,83 +106,69 @@ async function inviteFriends() {
             <dt style="color: var(--ink-soft);">適合對象</dt>
             <dd style="margin: 0; color: var(--ink); font-weight: 800;">{{ event.audience }}</dd>
           </div>
-          <div class="summary-row" style="display: grid; grid-template-columns: 100px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start;">
+          <div class="summary-row" style="display: grid; grid-template-columns: 100px 1fr; gap: 12px; padding: 12px 0; align-items: start;">
             <dt style="color: var(--ink-soft);">攜帶物品</dt>
             <dd style="margin: 0; color: var(--ink); font-weight: 800;">{{ event.items }}</dd>
-          </div>
-          <div v-if="event.description" class="summary-row" style="display: grid; grid-template-columns: 100px 1fr; gap: 12px; padding: 12px 0; align-items: start;">
-            <dt style="color: var(--ink-soft);">活動介紹</dt>
-            <dd style="margin: 0; font-weight: normal; color: var(--ink-soft); line-height: 1.55;">{{ event.description }}</dd>
           </div>
         </dl>
       </article>
 
-      <button class="button button--primary success-view__cta" type="button" @click="router.push('/my')">
-        查看我的活動 <span aria-hidden="true">→</span>
-      </button>
-      <p class="success-view__note">報名紀錄已放在「我的活動」</p>
+      <!-- 主要 CTA 引導與探索按鈕 -->
+      <div style="width: 100%; display: grid; gap: 12px; margin-bottom: 20px;">
+        <button class="button button--primary success-view__cta" type="button" @click="router.push('/my')">
+          查看我的行程 <span aria-hidden="true">→</span>
+        </button>
+        <p class="success-view__note" style="margin-top: -4px;">集合導航、存入日曆與 LINE 邀請已放在「我的行程」</p>
 
-      <!-- 也可以：加入行事曆 / 集合點導航 / LINE 邀請朋友 -->
-      <section class="section" style="margin-top: 24px; text-align: left; width: 100%;">
-        <div class="section-heading">
-          <div>
-            <h2>出門與提醒</h2>
-            <p>把活動記下來或開啟導航</p>
-          </div>
-        </div>
-        <div class="action-list">
-          <!-- 1. 加入行事曆 -->
-          <button class="action-card" type="button" @click="addToCalendar">
-            <span class="action-icon" style="background: #e0f2fe; color: #0284c7;">
-              <CalendarDays :size="24" aria-hidden="true" />
-            </span>
-            <span class="action-text">
-              <strong>加入我的行事曆</strong>
-              <span class="action-sub">支援 Google 日曆與 Apple / 手機日曆</span>
-            </span>
-            <ChevronRight :size="20" class="chevron" aria-hidden="true" />
-          </button>
-
-          <!-- 2. 集合點出發導航 -->
-          <button class="action-card" type="button" @click="navigateToMeeting">
-            <span class="action-icon" style="background: #dcfce7; color: #15803d;">
-              <Navigation :size="24" aria-hidden="true" />
-            </span>
-            <span class="action-text">
-              <strong>前往集合點導航</strong>
-              <span class="action-sub">{{ event.park.name }}・{{ event.park.meeting }}</span>
-            </span>
-            <ChevronRight :size="20" class="chevron" aria-hidden="true" />
-          </button>
-
-          <!-- 3. LINE 邀請朋友 -->
-          <button class="action-card" type="button" @click="inviteFriends">
-            <span class="action-icon" style="background: #f0fdf4; color: #16a34a;">
-              <MessageCircle :size="24" aria-hidden="true" />
-            </span>
-            <span class="action-text">
-              <strong>LINE 邀請朋友</strong>
-              <span class="action-sub">將活動資訊分享到 LINE 聊天室</span>
-            </span>
-            <ChevronRight :size="20" class="chevron" aria-hidden="true" />
-          </button>
-        </div>
-      </section>
-
-      <section class="section" style="margin-top: 14px; width: 100%;">
         <button class="button button--secondary button--full" type="button" @click="router.push('/explore')">
           回到探索首頁
         </button>
-      </section>
+      </div>
+
+      <!-- 底部防呆退路：若時間不合，點此取消報名 -->
+      <div style="text-align: center; margin-top: 10px; margin-bottom: 24px;">
+        <button
+          type="button"
+          style="background: transparent; border: none; color: #dc2626; font-size: 0.95rem; font-weight: 800; text-decoration: underline; cursor: pointer; padding: 8px 12px;"
+          @click="openCancelModal"
+        >
+          ✕ 若時間不合，點此取消報名
+        </button>
+      </div>
     </main>
 
-    <!-- 行事曆選擇彈窗 -->
-    <CalendarChoiceDialog
-      :show="showCalendarDialog"
-      :event="event"
-      @close="showCalendarDialog = false"
-      @added="onCalendarAdded"
-    />
+    <!-- 防誤觸取消報名確認彈窗 -->
+    <div v-if="showCancelModal" class="modal-backdrop" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card" style="background: #ffffff; border-radius: 24px; padding: 24px 20px; max-width: 360px; width: 100%; text-align: center; box-shadow: var(--shadow-modal);">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;">
+          <AlertTriangle :size="28" aria-hidden="true" />
+        </div>
+        <h3 style="margin: 0 0 8px; font-size: 1.3rem; color: var(--ink);">確認取消報名？</h3>
+        <p style="margin: 0 0 20px; font-size: 0.95rem; color: var(--ink-soft); line-height: 1.5;">
+          確定要取消參加「{{ event.title }}」嗎？取消後名額將自動釋出給其他人喔！
+        </p>
+
+        <div style="display: grid; gap: 10px;">
+          <button
+            class="button button--primary button--full"
+            type="button"
+            @click="showCancelModal = false"
+          >
+            繼續參加活動
+          </button>
+          <button
+            class="button button--secondary button--full"
+            type="button"
+            :disabled="isCancelling"
+            style="background: #fff; color: #dc2626; border-color: #fca5a5;"
+            @click="confirmCancelRegistration"
+          >
+            <span v-if="isCancelling">取消中...</span>
+            <span v-else>確認取消報名</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="toastMessage" class="toast show" role="status" aria-live="polite">
       {{ toastMessage }}
@@ -196,4 +179,5 @@ async function inviteFriends() {
     <RouterLink class="button button--primary" to="/explore">回到探索</RouterLink>
   </div>
 </template>
+
 

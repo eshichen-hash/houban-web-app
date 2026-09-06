@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock3, Heart, MapPin, Share2 } from 'lucide-vue-next'
+import { CalendarDays, Clock3, Heart, MapPin, MessageCircle, Navigation, Share2, XCircle } from 'lucide-vue-next'
 import type { EventItem } from '@/data/events'
 
 const props = withDefaults(defineProps<{
@@ -14,6 +14,9 @@ const emit = defineEmits<{
   open: [event: EventItem]
   share: [event: EventItem]
   toggleFavorite: [event: EventItem]
+  navigate: [event: EventItem]
+  calendar: [event: EventItem]
+  cancel: [event: EventItem]
 }>()
 </script>
 
@@ -56,12 +59,64 @@ const emit = defineEmits<{
         <span class="tag tag--success">{{ props.event.cost }}</span>
         <span class="tag">{{ props.event.audience }}</span>
       </div>
-      <div class="event-card__actions">
+
+      <!-- 已報名專屬：出門與提醒快捷工具組 -->
+      <div v-if="props.registered" class="event-card__quick-tools" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-wrap: wrap; gap: 8px;">
+        <button
+          class="pill-tool-btn"
+          type="button"
+          style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 800; font-size: 0.85rem; border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;"
+          @click="emit('navigate', props.event)"
+        >
+          <Navigation :size="15" aria-hidden="true" />
+          <span>集合導航</span>
+        </button>
+
+        <button
+          class="pill-tool-btn"
+          type="button"
+          style="background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; font-weight: 800; font-size: 0.85rem; border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;"
+          @click="emit('calendar', props.event)"
+        >
+          <CalendarDays :size="15" aria-hidden="true" />
+          <span>存入日曆</span>
+        </button>
+
+        <button
+          class="pill-tool-btn"
+          type="button"
+          style="background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; font-weight: 800; font-size: 0.85rem; border-radius: 999px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;"
+          @click="emit('share', props.event)"
+        >
+          <MessageCircle :size="15" aria-hidden="true" />
+          <span>LINE 邀請</span>
+        </button>
+      </div>
+
+      <!-- 底部操作按鈕 -->
+      <div class="event-card__actions" style="margin-top: 12px;">
         <button class="button button--primary" type="button" @click="emit('open', props.event)">
           查看詳情
           <span aria-hidden="true">→</span>
         </button>
-        <button class="button button--secondary button--share" type="button" @click="emit('share', props.event)">
+
+        <button
+          v-if="props.registered"
+          class="button button--secondary"
+          type="button"
+          style="background: #ffffff; color: #dc2626; border: 1px solid #fecaca; font-weight: 800;"
+          @click="emit('cancel', props.event)"
+        >
+          <XCircle :size="17" aria-hidden="true" />
+          取消報名
+        </button>
+
+        <button
+          v-else
+          class="button button--secondary button--share"
+          type="button"
+          @click="emit('share', props.event)"
+        >
           <Share2 :size="18" aria-hidden="true" />
           分享
         </button>
@@ -69,3 +124,4 @@ const emit = defineEmits<{
     </div>
   </article>
 </template>
+

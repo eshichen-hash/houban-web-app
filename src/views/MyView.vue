@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Bell,
   CalendarDays,
@@ -42,6 +43,9 @@ const toastMessage = shallowRef('')
 const expandedNotification = shallowRef<string | null>(null)
 const showCalendarDialog = shallowRef(false)
 const selectedCalendarEvent = shallowRef<EventItem | null>(null)
+const showCancelDialog = shallowRef(false)
+const eventToCancel = shallowRef<EventItem | null>(null)
+const isCancelling = shallowRef(false)
 
 // 預設展開第一張活動通知
 if (registeredEvents.value.length > 0) {
@@ -107,9 +111,34 @@ function navigateToMeeting(event?: EventItem) {
   openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
 }
 
+function openCancelConfirmation(event: EventItem) {
+  eventToCancel.value = event
+  showCancelDialog.value = true
+}
+
+async function confirmCancel() {
+  if (!eventToCancel.value || isCancelling.value) return
+  isCancelling.value = true
+  try {
+    const res = await unregisterEvent(eventToCancel.value.id)
+    showToast(res.message)
+    showCancelDialog.value = false
+    eventToCancel.value = null
+  } catch (err: any) {
+    showToast(err?.message || '取消失敗，請稍後再試')
+  } finally {
+    isCancelling.value = false
+  }
+}
+
 async function handleCancelRegistration(eventId: string) {
-  const res = await unregisterEvent(eventId)
-  showToast(res.message)
+  const ev = registeredEvents.value.find((e) => e.id === eventId)
+  if (ev) {
+    openCancelConfirmation(ev)
+  } else {
+    const res = await unregisterEvent(eventId)
+    showToast(res.message)
+  }
 }
 
 function openEvent(event: EventItem) {
@@ -276,9 +305,13 @@ function saveSettings() {
           v-for="event in registeredEvents"
           :key="event.id"
           :event="event"
+          registered
           :favorite="state.favorites.includes(event.id)"
           @open="openEvent"
           @share="shareEvent"
+          @navigate="navigateToMeeting"
+          @calendar="addToCalendar"
+          @cancel="openCancelConfirmation"
           @toggle-favorite="toggleFavorite(event.id)"
         />
         <div v-if="!registeredEvents.length" class="empty-state">
@@ -594,6 +627,39 @@ function saveSettings() {
       @close="showCalendarDialog = false"
       @added="onCalendarAdded"
     />
+
+    <!-- 防誤觸取消報名確認彈窗 -->
+    <div v-if="showCancelDialog && eventToCancel" class="modal-backdrop" style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-card" style="background: #ffffff; border-radius: 24px; padding: 24px 20px; max-width: 360px; width: 100%; text-align: center; box-shadow: var(--shadow-modal);">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;">
+          <AlertTriangle :size="28" aria-hidden="true" />
+        </div>
+        <h3 style="margin: 0 0 8px; font-size: 1.3rem; color: var(--ink);">確認取消報名？</h3>
+        <p style="margin: 0 0 20px; font-size: 0.95rem; color: var(--ink-soft); line-height: 1.5;">
+          確定要取消參加「{{ eventToCancel.title }}」嗎？取消後名額將自動釋出給其他人喔！
+        </p>
+
+        <div style="display: grid; gap: 10px;">
+          <button
+            class="button button--primary button--full"
+            type="button"
+            @click="showCancelDialog = false"
+          >
+            繼續參加活動
+          </button>
+          <button
+            class="button button--secondary button--full"
+            type="button"
+            :disabled="isCancelling"
+            style="background: #fff; color: #dc2626; border-color: #fca5a5;"
+            @click="confirmCancel"
+          >
+            <span v-if="isCancelling">取消中...</span>
+            <span v-else>確認取消報名</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Toast 提示訊息 -->
     <div v-if="toastMessage" class="toast show" role="status" aria-live="polite">
