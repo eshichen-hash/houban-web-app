@@ -1,48 +1,20 @@
 import { computed, reactive, shallowRef, watch } from 'vue'
-import { parks, type Cost, type Difficulty, type EventItem, type EventType } from '@/data/events'
+import { parks, type Park, type Cost, type Difficulty, type EventItem, type EventType } from '@/data/events'
+import type { SelectedParkResult } from '@/types/places'
+import { addCalendarDays, eventDateKey, eventDateTime, formatEventDate, formatTimeRange, isValidDate, taipeiDate, timeMinutes } from '@/utils/eventDateTime'
 
 export type CreateEventInput = Omit<EventItem, 'id' | 'organizer'>
 
-function toIsoDate(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
-function formatCalendarDate(isoDate: string) {
-  const date = new Date(`${isoDate}T12:00:00`)
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日`
-}
-
-function formatTime(time: string) {
-  const [rawHour = '0', minute = '00'] = time.split(':')
-  const hour = Number(rawHour)
-  const period = hour < 12 ? '上午' : '下午'
-  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-  return `${period} ${displayHour}:${minute}`
-}
-
-function formatTimeRange(startTime: string, endTime: string) {
-  const start = formatTime(startTime)
-  const end = formatTime(endTime)
-  const [startPeriod = ''] = start.split(' ')
-  const compactEnd = end.startsWith(`${startPeriod} `) ? end.slice(startPeriod.length + 1) : end
-  return `${start}－${compactEnd}`
-}
+export type CreateValidationErrors = Partial<Record<'type' | 'isoDate' | 'time' | 'endTime' | 'park' | 'meeting' | 'spots', string>>
 
 export function useCreateEventDraft() {
   const today = new Date()
-  const todayIso = toIsoDate(today)
-  const tomorrowIso = toIsoDate(addDays(today, 1))
+  const validationNow = shallowRef(today)
+  const todayIso = taipeiDate(today)
+  const tomorrowIso = addCalendarDays(todayIso, 1)
   const nameIsCustom = shallowRef(false)
   const introIsCustom = shallowRef(false)
+  const externalPark = shallowRef<Park | null>(null)
 
   const form = reactive({
     type: '' as EventType | '',
@@ -63,22 +35,10 @@ export function useCreateEventDraft() {
 
   const selectedPark = computed(() => {
     if (!form.parkId) return null
-    return parks.find((park) => park.id === form.parkId || park.name === form.parkId) ?? {
-      id: form.parkId,
-      name: form.parkId,
-      district: '全台',
-      address: form.parkId,
-      meeting: `${form.parkId}入口廣場`,
-      lat: 25.033,
-      lng: 121.535,
-    }
+    if (externalPark.value?.id === form.parkId) return externalPark.value
+    return parks.find((park) => park.id === form.parkId || park.name === form.parkId) ?? null
   })
-  const dateLabel = computed(() => {
-    const date = formatCalendarDate(form.isoDate)
-    if (form.isoDate === todayIso) return `今天・${date}`
-    if (form.isoDate === tomorrowIso) return `明天・${date}`
-    return date
-  })
+  const dateLabel = computed(() => formatEventDate(form.isoDate))
   const timeLabel = computed(() => formatTimeRange(form.time, form.endTime))
   const generatedName = computed(() => {
     if (!form.type) return ''
@@ -92,7 +52,32 @@ export function useCreateEventDraft() {
     return `在${locationName}進行${form.difficulty}${form.type}，歡迎一起參加。`
   })
   const displayName = computed(() => form.name.trim() || generatedName.value)
-  const canCreate = computed(() => Boolean(form.type && displayName.value && selectedPark.value && form.meeting.trim()))
+  function validateFields(now: Date): CreateValidationErrors {
+    const errors: CreateValidationErrors = {}
+    if (!form.type || !displayName.value) errors.type = '請先選擇一種活動類型'
+    if (!isValidDate(form.isoDate)) errors.isoDate = '請選擇有效的活動日期'
+    else if (form.isoDate < taipeiDate(now)) errors.isoDate = '活動日期不能早於今天'
+    const start = timeMinutes(form.time)
+    const end = timeMinutes(form.endTime)
+    if (start === null) errors.time = '請設定活動開始時間'
+    else if (!errors.isoDate && eventDateTime(form.isoDate, form.time).getTime() <= now.getTime()) {
+      errors.time = '開始時間已過，請選擇之後的時間或其他日期'
+    }
+    if (end === null) errors.endTime = '請設定活動結束時間'
+    else if (start !== null && end <= start) errors.endTime = '結束時間須晚於開始時間；目前僅支援當日活動'
+    if (!selectedPark.value) errors.park = '請從搜尋結果選擇活動地點'
+    if (!form.meeting.trim()) errors.meeting = '請選擇或輸入集合地點'
+    if (!Number.isInteger(form.spots) || form.spots < 3 || form.spots > 50) errors.spots = '活動名額須為 3–50 人的整數'
+    return errors
+  }
+  const validationErrors = computed(() => validateFields(validationNow.value))
+  const canCreate = computed(() => Object.keys(validationErrors.value).length === 0)
+
+  function validate(now = new Date()): CreateValidationErrors {
+    // Refresh the reactive error summary as well as the submit-time guard.
+    validationNow.value = now
+    return validationErrors.value
+  }
 
   watch([() => form.type, () => form.parkId], () => {
     if (!nameIsCustom.value) form.name = generatedName.value
@@ -127,6 +112,24 @@ export function useCreateEventDraft() {
     form.parkId = parkId
     const nextPark = parks.find((park) => park.id === parkId)
     if (nextPark && (!form.meeting || form.meeting === previousDefaultMeeting)) form.meeting = nextPark.meeting
+    if (!parkId) { externalPark.value = null; form.meeting = '' }
+  }
+
+  function selectPlace(result: SelectedParkResult) {
+    const knownPark = parks.find((park) => park.id === result.placeId || (
+      park.name === result.name && park.address === result.address
+    ))
+    externalPark.value = {
+      id: result.placeId || knownPark?.id || result.name,
+      name: result.name,
+      address: result.address || knownPark?.address || '',
+      district: result.district || knownPark?.district || '',
+      lat: result.lat ?? knownPark?.lat,
+      lng: result.lng ?? knownPark?.lng,
+      meeting: knownPark?.meeting || `${result.name}入口廣場`,
+    }
+    form.parkId = externalPark.value.id
+    form.meeting = externalPark.value.meeting
   }
 
   function changeSpots(delta: number) {
@@ -138,24 +141,20 @@ export function useCreateEventDraft() {
   }
 
   function buildEventInput(): CreateEventInput {
-    const park = selectedPark.value ?? parks[0]
-    if (!park) throw new Error('找不到可用的公園資料')
-
-    const dateKey = form.isoDate === todayIso
-      ? 'today'
-      : form.isoDate === tomorrowIso
-        ? 'tomorrow'
-        : 'week'
+    const errors = validate()
+    if (Object.keys(errors).length) throw new Error(Object.values(errors)[0])
+    const park = selectedPark.value
+    if (!park) throw new Error('請選擇活動地點')
 
     return {
       title: displayName.value,
       type: form.type as EventType,
       difficulty: form.difficulty,
-      dateKey,
+      dateKey: eventDateKey(form.isoDate),
       isoDate: form.isoDate,
-      dateLabel: dateLabel.value,
+      dateLabel: formatEventDate(form.isoDate),
       time: timeLabel.value,
-      park,
+      park: { ...park, meeting: form.meeting.trim() },
       spots: form.spots,
       maxSpots: form.spots,
       cost: form.cost,
@@ -179,6 +178,8 @@ export function useCreateEventDraft() {
     generatedIntro,
     displayName,
     canCreate,
+    validationErrors,
+    validate,
     nameIsCustom,
     introIsCustom,
     updateName,
@@ -186,6 +187,7 @@ export function useCreateEventDraft() {
     updateIntro,
     resetGeneratedIntro,
     selectPark,
+    selectPlace,
     changeSpots,
     normaliseSpots,
     buildEventInput,

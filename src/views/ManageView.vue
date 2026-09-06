@@ -10,7 +10,7 @@ import {
   MapPin,
   UsersRound,
 } from 'lucide-vue-next'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import ManageEventCard from '@/components/manage/ManageEventCard.vue'
 import { useAppState } from '@/composables/useAppState'
@@ -28,65 +28,48 @@ const toastMessage = shallowRef('')
 const eventStatuses = ref<Record<string, 'active' | 'ended' | 'cancelled'>>({})
 const participants = ref<ParticipantItem[]>([])
 const isLoadingParticipants = shallowRef(false)
+const isSaving = shallowRef(false)
 
-const defaultSeedEvent: EventItem = {
-  id: 'seed-walk-manage',
-  title: '樂齡晨間健走',
-  type: '健走',
-  difficulty: '輕鬆',
-  dateKey: 'today',
-  isoDate: '2026-08-16',
-  dateLabel: '8 月 16 日',
-  time: '上午 9:00',
-  park: parks[0] || { id: 'daan-forest', name: '大安森林公園', district: '台北市大安區', address: '', meeting: '2 號出口旁廣場' },
-  spots: 6,
-  maxSpots: 12,
-  cost: '免費',
-  audience: '適合 50 歲以上長輩與初學者',
-  description: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
-  items: '自備飲用水、遮陽帽、穿著運動鞋',
-  distanceKm: 0.8,
-  organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
-}
+const allManagedEvents = computed<EventItem[]>(() => [...state.createdEvents])
 
-const allManagedEvents = computed<EventItem[]>(() => {
-  return [defaultSeedEvent, ...state.createdEvents]
-})
-
-const selectedEvent = ref<EventItem>(defaultSeedEvent)
+const selectedEvent = shallowRef<EventItem | null>(null)
 
 // 編輯活動表單狀態
 const editForm = ref({
-  title: '樂齡晨間健走',
+  title: '',
   type: '健走',
-  date: '2026-08-16',
+  date: '',
   time: '09:00',
-  park: '大安森林公園',
-  meeting: '捷運站 2 號出口旁廣場',
+  park: '',
+  meeting: '',
   spots: 12,
   level: '輕鬆',
-  audience: '適合 50 歲以上長輩與初學者',
-  items: '自備飲用水、遮陽帽、穿著運動鞋',
+  audience: '',
+  items: '',
   cost: '免費',
-  intro: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
+  intro: '',
 })
 
-function onOpenEdit(event: EventItem) {
-  selectedEvent.value = event
+function loadEditForm(event: EventItem) {
   editForm.value = {
     title: event.title,
     type: event.type,
-    date: event.isoDate || '2026-09-04',
-    time: event.time.includes('－') ? event.time.split('－')[0].replace(/[^0-9:]/g, '') : '09:00',
+    date: event.isoDate,
+    time: event.time.includes('－') ? event.time.split('－')[0].replace(/[^0-9:]/g, '') : event.time.replace(/[^0-9:]/g, '') || '09:00',
     park: event.park.name,
-    meeting: event.park.meeting || '公園入口處',
-    spots: event.maxSpots || 12,
-    level: event.difficulty || '輕鬆',
-    audience: event.audience || '',
-    items: event.items || '',
-    cost: event.cost || '免費',
-    intro: event.description || '',
+    meeting: event.park.meeting || '',
+    spots: event.maxSpots,
+    level: event.difficulty,
+    audience: event.audience,
+    items: event.items,
+    cost: event.cost,
+    intro: event.description,
   }
+}
+
+function onOpenEdit(event: EventItem) {
+  selectedEvent.value = event
+  loadEditForm(event)
   activeSubView.value = 'edit'
 }
 
@@ -96,17 +79,7 @@ async function onOpenAttendees(event: EventItem) {
   isLoadingParticipants.value = true
   try {
     const list = await getEventParticipants(event.id)
-    if (list.length > 0) {
-      participants.value = list
-    } else {
-      // 模擬預設名單
-      participants.value = [
-        { id: '1', userId: 'u1', userName: '王美華', checkInStatus: 'pending', registeredAt: '今天' },
-        { id: '2', userId: 'u2', userName: '陳志明', checkInStatus: 'pending', registeredAt: '今天' },
-        { id: '3', userId: 'u3', userName: '李秀琴', checkInStatus: 'pending', registeredAt: '昨天' },
-        { id: '4', userId: 'u4', userName: '張國雄', checkInStatus: 'pending', registeredAt: '昨天' },
-      ]
-    }
+    participants.value = list
   } catch {
     participants.value = []
   } finally {
@@ -115,19 +88,26 @@ async function onOpenAttendees(event: EventItem) {
 }
 
 async function toggleCheckIn(person: ParticipantItem) {
+  if (!selectedEvent.value) return
   const nextStatus = person.checkInStatus === 'checked_in' ? 'pending' : 'checked_in'
+  const saved = await checkInAttendee(selectedEvent.value.id, person.userId, nextStatus)
+  if (!saved) {
+    showToast('簽到狀態尚未儲存，請稍後重試')
+    return
+  }
   person.checkInStatus = nextStatus
-  await checkInAttendee(selectedEvent.value.id, person.userId, nextStatus)
   showToast(nextStatus === 'checked_in' ? `已完成 ${person.userName} 簽到` : `已取消 ${person.userName} 簽到`)
 }
 
 function onOpenChange(event: EventItem) {
   selectedEvent.value = event
+  loadEditForm(event)
   activeSubView.value = 'change'
 }
 
 function onOpenEnd(event: EventItem) {
   selectedEvent.value = event
+  loadEditForm(event)
   activeSubView.value = 'end'
 }
 
@@ -138,51 +118,92 @@ function showToast(msg: string) {
   }, 2200)
 }
 
-function saveEdit() {
-  if (selectedEvent.value) {
-    selectedEvent.value.title = editForm.value.title
-    selectedEvent.value.description = editForm.value.intro
-    selectedEvent.value.items = editForm.value.items
-    selectedEvent.value.audience = editForm.value.audience
-
-    updateEventInSupabase(selectedEvent.value.id, {
+async function saveEdit() {
+  if (!selectedEvent.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    const saved = await updateEventInSupabase(selectedEvent.value.id, {
       title: editForm.value.title,
+      iso_date: editForm.value.date,
+      time: editForm.value.time,
+      park_name: editForm.value.park,
+      park_meeting: editForm.value.meeting,
+      max_spots: editForm.value.spots,
+      difficulty: editForm.value.level,
+      cost: editForm.value.cost,
       description: editForm.value.intro,
       items: editForm.value.items,
       audience: editForm.value.audience,
     })
+    if (!saved) {
+      showToast('活動變更尚未儲存，請稍後重試')
+      return
+    }
+    selectedEvent.value.title = editForm.value.title
+    selectedEvent.value.description = editForm.value.intro
+    selectedEvent.value.items = editForm.value.items
+    selectedEvent.value.audience = editForm.value.audience
+    showToast('已儲存活動變更')
+    activeSubView.value = null
+  } finally {
+    isSaving.value = false
   }
-  showToast('已儲存活動變更')
-  activeSubView.value = null
 }
 
-function saveChange() {
-  if (selectedEvent.value) {
-    updateEventInSupabase(selectedEvent.value.id, {
+async function saveChange() {
+  if (!selectedEvent.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    const saved = await updateEventInSupabase(selectedEvent.value.id, {
+      iso_date: editForm.value.date,
       time: editForm.value.time,
       park_meeting: editForm.value.meeting,
     })
+    if (!saved) {
+      showToast('活動異動尚未儲存，請稍後重試')
+      return
+    }
+    showToast('已更新活動異動資訊')
+    activeSubView.value = null
+  } finally {
+    isSaving.value = false
   }
-  showToast('已更新活動異動資訊並發送提醒')
-  activeSubView.value = null
 }
 
-function cancelActivity() {
-  if (selectedEvent.value) {
+async function cancelActivity() {
+  if (!selectedEvent.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    const saved = await updateEventStatusInSupabase(selectedEvent.value.id, 'cancelled')
+    if (!saved) {
+      showToast('取消狀態尚未儲存，請稍後重試')
+      return
+    }
     eventStatuses.value[selectedEvent.value.id] = 'cancelled'
-    updateEventStatusInSupabase(selectedEvent.value.id, 'cancelled')
+    selectedEvent.value.status = 'cancelled'
+    showToast('已取消這場活動')
+    activeSubView.value = null
+  } finally {
+    isSaving.value = false
   }
-  showToast('已取消這場活動')
-  activeSubView.value = null
 }
 
-function markActivityEnd() {
-  if (selectedEvent.value) {
+async function markActivityEnd() {
+  if (!selectedEvent.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    const saved = await updateEventStatusInSupabase(selectedEvent.value.id, 'ended')
+    if (!saved) {
+      showToast('活動結束狀態尚未儲存，請稍後重試')
+      return
+    }
     eventStatuses.value[selectedEvent.value.id] = 'ended'
-    updateEventStatusInSupabase(selectedEvent.value.id, 'ended')
+    selectedEvent.value.status = 'ended'
+    showToast('已將活動標記為結束')
+    activeSubView.value = null
+  } finally {
+    isSaving.value = false
   }
-  showToast('已將活動標記為結束')
-  activeSubView.value = null
 }
 </script>
 
@@ -201,9 +222,9 @@ function markActivityEnd() {
         <strong v-else-if="activeSubView === 'end'">活動結束</strong>
 
         <small v-if="!activeSubView">我發起的活動</small>
-        <small v-else-if="activeSubView === 'edit'">{{ selectedEvent.title }}</small>
-        <small v-else-if="activeSubView === 'attendees'">{{ selectedEvent.spots || 6 }}／{{ selectedEvent.maxSpots || 12 }} 人</small>
-        <small v-else-if="activeSubView === 'change'">{{ selectedEvent.title }}</small>
+        <small v-else-if="activeSubView === 'edit'">{{ selectedEvent?.title }}</small>
+        <small v-else-if="activeSubView === 'attendees'">{{ selectedEvent?.spots ?? 0 }}／{{ selectedEvent?.maxSpots ?? 0 }} 人</small>
+        <small v-else-if="activeSubView === 'change'">{{ selectedEvent?.title }}</small>
         <small v-else-if="activeSubView === 'end'">完成活動管理</small>
       </div>
       <span class="subpage-header__spacer" aria-hidden="true"></span>
@@ -215,17 +236,22 @@ function markActivityEnd() {
       <h1 id="manage-title">我發起的活動</h1>
       <p class="page-intro">查看報名、編輯內容或處理活動異動。</p>
 
-      <section class="manage-grid" style="margin-bottom: 24px;">
+      <section v-if="allManagedEvents.length" class="manage-grid" style="margin-bottom: 24px;">
         <ManageEventCard
           v-for="event in allManagedEvents"
           :key="event.id"
           :event="event"
-          :status="eventStatuses[event.id] || 'active'"
+          :status="eventStatuses[event.id] || event.status || 'active'"
           @edit="onOpenEdit"
           @attendees="onOpenAttendees"
           @change="onOpenChange"
           @end="onOpenEnd"
         />
+      </section>
+
+      <section v-else class="empty-state card" style="margin-bottom: 24px; padding: 28px 20px; text-align: center;">
+        <h2 style="margin-top: 0;">目前還沒有你發起的活動</h2>
+        <p>登入 LINE 後建立的活動會顯示在這裡。</p>
       </section>
 
       <button class="button button--primary button--full" type="button" @click="router.push('/create')">
@@ -287,8 +313,8 @@ function markActivityEnd() {
           <textarea id="edit-intro" v-model="editForm.intro" class="textarea" rows="3"></textarea>
         </div>
 
-        <button class="button button--primary button--full" type="submit" style="margin-top: 8px;">
-          儲存變更 <span aria-hidden="true">✓</span>
+        <button class="button button--primary button--full" type="submit" style="margin-top: 8px;" :disabled="isSaving" :aria-busy="isSaving">
+          {{ isSaving ? '正在儲存…' : '儲存變更' }} <span v-if="!isSaving" aria-hidden="true">✓</span>
         </button>
         <p class="helper-text" style="text-align: center; margin: 4px 0 0;">儲存後仍可在活動管理中繼續編輯。</p>
       </form>
@@ -298,7 +324,7 @@ function markActivityEnd() {
     <main v-else-if="activeSubView === 'attendees'" class="page-content">
       <div class="eyebrow">報名名單與簽到</div>
       <h1>已有 {{ participants.length }} 人參加</h1>
-      <p class="page-intro">{{ selectedEvent.title }}・上限 {{ selectedEvent.maxSpots || 12 }} 人</p>
+      <p class="page-intro">{{ selectedEvent?.title }}・上限 {{ selectedEvent?.maxSpots ?? 0 }} 人</p>
 
       <div v-if="isLoadingParticipants" style="text-align: center; padding: 30px; color: var(--ink-soft);">
         正在載入名冊中...
@@ -366,8 +392,8 @@ function markActivityEnd() {
           <input id="change-meeting" v-model="editForm.meeting" class="input" required />
         </div>
 
-        <button class="button button--primary button--full" type="submit" style="margin-top: 8px;">
-          儲存異動
+        <button class="button button--primary button--full" type="submit" style="margin-top: 8px;" :disabled="isSaving" :aria-busy="isSaving">
+          {{ isSaving ? '正在儲存…' : '儲存異動' }}
         </button>
       </form>
 
@@ -380,8 +406,8 @@ function markActivityEnd() {
         </div>
       </div>
 
-      <button class="button button--full" type="button" style="margin-top: 12px; background: #dc2626; color: #ffffff; border-color: #dc2626;" @click="cancelActivity">
-        取消這場活動
+      <button class="button button--full" type="button" style="margin-top: 12px; background: #dc2626; color: #ffffff; border-color: #dc2626;" :disabled="isSaving" :aria-busy="isSaving" @click="cancelActivity">
+        {{ isSaving ? '正在儲存…' : '取消這場活動' }}
       </button>
     </main>
 
@@ -417,8 +443,8 @@ function markActivityEnd() {
         </div>
       </div>
 
-      <button class="button button--primary button--full" type="button" @click="markActivityEnd">
-        標記活動結束 <span aria-hidden="true">✓</span>
+      <button class="button button--primary button--full" type="button" :disabled="isSaving" :aria-busy="isSaving" @click="markActivityEnd">
+        {{ isSaving ? '正在儲存…' : '標記活動結束' }} <span v-if="!isSaving" aria-hidden="true">✓</span>
       </button>
     </main>
 
@@ -428,4 +454,3 @@ function markActivityEnd() {
     </div>
   </div>
 </template>
-

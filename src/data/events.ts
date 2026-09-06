@@ -23,6 +23,7 @@ export type EventType =
 export type Difficulty = '輕鬆' | '一般'
 export type Cost = '免費' | '付費'
 export type DateFilter = 'today' | 'tomorrow' | 'week' | 'custom'
+export type EventStatus = 'active' | 'full' | 'cancelled' | 'ended'
 
 export interface Park {
   id: string
@@ -80,7 +81,9 @@ export interface EventItem {
   image?: string
   imageAlt?: string
   distanceKm?: number
+  status?: EventStatus
   organizer: {
+    id?: string
     name: string
     role: string
     rating: string

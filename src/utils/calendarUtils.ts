@@ -1,68 +1,15 @@
 import type { EventItem } from '@/data/events'
+import { addCalendarDays, eventDateTime, parseStoredTimeRange } from './eventDateTime'
 
 /**
  * 解析活動的起始與結束時間 Date 物件
  */
 export function parseEventDateTimeRange(event: EventItem): { start: Date; end: Date } {
-  // 1. 取得日期基準
-  const today = new Date()
-  let dateStr = event.isoDate
-
-  if (!dateStr) {
-    if (event.dateKey === 'tomorrow') {
-      const tm = new Date(today)
-      tm.setDate(tm.getDate() + 1)
-      dateStr = tm.toISOString().split('T')[0]
-    } else {
-      dateStr = today.toISOString().split('T')[0]
-    }
-  }
-
-  const [yearStr, monthStr, dayStr] = dateStr.split('-')
-  const year = parseInt(yearStr, 10) || today.getFullYear()
-  const month = (parseInt(monthStr, 10) || (today.getMonth() + 1)) - 1
-  const day = parseInt(dayStr, 10) || today.getDate()
-
-  // 2. 解析時間（處理「上午 9:00－10:00」、「下午 2:00－3:30」、「09:00」等格式）
-  let startHour = 9
-  let startMin = 0
-  let endHour = 10
-  let endMin = 0
-
-  const rawTime = event.time || '上午 9:00－10:00'
-  const isPM = rawTime.includes('下午') || rawTime.includes('傍晚') || rawTime.includes('晚上') || rawTime.includes('PM') || rawTime.includes('pm')
-  const isAM = rawTime.includes('上午') || rawTime.includes('早上') || rawTime.includes('晨') || rawTime.includes('AM') || rawTime.includes('am')
-
-  // 抽取所有 HH:MM 或數字
-  const timeParts = rawTime.split(/[－–~至到-]/)
-  if (timeParts.length > 0) {
-    const startMatch = timeParts[0].match(/(\d{1,2}):(\d{2})/) || timeParts[0].match(/(\d{1,2})/)
-    if (startMatch) {
-      startHour = parseInt(startMatch[1], 10)
-      startMin = startMatch[2] ? parseInt(startMatch[2], 10) : 0
-      if (isPM && startHour < 12) startHour += 12
-      if (isAM && startHour === 12) startHour = 0
-    }
-  }
-
-  if (timeParts.length > 1) {
-    const endMatch = timeParts[1].match(/(\d{1,2}):(\d{2})/) || timeParts[1].match(/(\d{1,2})/)
-    if (endMatch) {
-      endHour = parseInt(endMatch[1], 10)
-      endMin = endMatch[2] ? parseInt(endMatch[2], 10) : 0
-      const isEndPM = timeParts[1].includes('下午') || timeParts[1].includes('傍晚') || timeParts[1].includes('晚上') || isPM
-      if (isEndPM && endHour < 12) endHour += 12
-    }
-  } else {
-    // 預設活動長度 1 小時
-    endHour = (startHour + 1) % 24
-    endMin = startMin
-  }
-
-  const startDate = new Date(year, month, day, startHour, startMin, 0)
-  const endDate = new Date(year, month, day, endHour, endMin, 0)
-
-  return { start: startDate, end: endDate }
+  const range = parseStoredTimeRange(event.time)
+  const start = eventDateTime(event.isoDate, range.startTime)
+  const end = eventDateTime(addCalendarDays(event.isoDate, range.endDayOffset), range.endTime)
+  if (end.getTime() <= start.getTime()) throw new Error('活動結束時間須晚於開始時間')
+  return { start, end }
 }
 
 /**

@@ -2,13 +2,12 @@ import { computed, shallowRef } from 'vue'
 import { useAppState } from '@/composables/useAppState'
 import type { DateFilter, EventItem } from '@/data/events'
 import type { ExploreFilters, ExploreScope } from '@/types/explore'
+import { matchesEventDate } from '@/utils/eventDateTime'
 
 const PAGE_SIZE = 6
 
 function matchesDate(event: EventItem, dateFilter: DateFilter, customDate: string | null) {
-  if (dateFilter === 'week') return true
-  if (dateFilter === 'custom') return Boolean(customDate && event.isoDate === customDate)
-  return event.dateKey === dateFilter
+  return matchesEventDate(event, dateFilter, customDate)
 }
 
 function computeHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -55,7 +54,7 @@ function matchesScope(event: EventItem, scope: ExploreScope) {
   }
 
   // 4. 回退至預設相對距離
-  return (event.distanceKm ?? 0) <= scope.radius
+  return typeof event.distanceKm === 'number' && event.distanceKm <= scope.radius
 }
 
 function formatCustomDate(value: string) {
@@ -97,7 +96,7 @@ export function useExploreDiscovery() {
   const scopedEvents = computed(() => events.value.filter((event) => matchesScope(event, appliedScope.value)))
 
   const recommendedEvents = computed(() => scopedEvents.value
-    .filter((event) => event.dateKey === 'today')
+    .filter((event) => matchesDate(event, 'today', null))
     .slice(0, 3))
 
   const filteredEvents = computed(() => scopedEvents.value.filter((event) => {

@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://houban-web-app.vercel.app/:path*",
+      "permanent": true
+    }
+  ]
+}

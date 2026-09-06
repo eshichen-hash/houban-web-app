@@ -1,4 +1,7 @@
-import { supabase } from './supabase'
+import type { EventItem } from '@/data/events'
+import { mapRowToEvent, type EventRow } from './eventService'
+import { callLineApi } from './lineApiService'
+import { requireVerifiedLineToken } from './liffService'
 
 export interface RegistrationRow {
   id: string
@@ -11,13 +14,6 @@ export interface RegistrationRow {
   created_at?: string
 }
 
-export interface FavoriteRow {
-  id: string
-  event_id: string
-  user_id: string
-  created_at?: string
-}
-
 export interface ParticipantItem {
   id: string
   userId: string
@@ -27,201 +23,118 @@ export interface ParticipantItem {
   registeredAt: string
 }
 
-export async function fetchMyRegistrations(userId: string = 'user-me'): Promise<string[]> {
+export interface PersonalCloudState {
+  registrationIds: string[]
+  favoriteIds: string[]
+  organizerEvents: EventItem[]
+}
+
+interface BootstrapResponse {
+  registrationIds: string[]
+  favoriteIds: string[]
+  organizerEvents: EventRow[]
+}
+
+interface OperationResult {
+  success: boolean
+  message: string
+  idempotent?: boolean
+  spots?: number
+  status?: string
+}
+
+function mapParticipant(row: RegistrationRow): ParticipantItem {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userName: row.user_name || 'LINE 使用者',
+    userAvatar: row.user_avatar || undefined,
+    checkInStatus: row.check_in_status || 'pending',
+    registeredAt: row.created_at ? new Date(row.created_at).toLocaleDateString('zh-TW') : '',
+  }
+}
+
+export async function fetchMyCloudState(): Promise<PersonalCloudState> {
+  const idToken = await requireVerifiedLineToken(false)
+  const result = await callLineApi<BootstrapResponse>('bootstrap', {}, idToken)
+  return {
+    registrationIds: result.registrationIds,
+    favoriteIds: result.favoriteIds,
+    organizerEvents: result.organizerEvents.map(mapRowToEvent),
+  }
+}
+
+export async function fetchMyRegistrations(): Promise<string[]> {
+  return (await fetchMyCloudState()).registrationIds
+}
+
+export async function fetchMyFavorites(): Promise<string[]> {
+  return (await fetchMyCloudState()).favoriteIds
+}
+
+export async function registerEventInSupabase(eventId: string): Promise<OperationResult> {
   try {
-    const { data, error } = await supabase
-      .from('registrations')
-      .select('event_id')
-      .eq('user_id', userId)
-      .eq('status', 'confirmed')
-
-    if (error) {
-      console.warn('Supabase fetch registrations error:', error.message)
-      return []
-    }
-
-    return (data || []).map((r) => r.event_id)
+    const idToken = await requireVerifiedLineToken()
+    return await callLineApi<OperationResult>('register_event', { eventId }, idToken)
   } catch (err) {
-    console.warn('Failed to fetch registrations from Supabase:', err)
-    return []
+    console.error('Failed to register event:', err)
+    return { success: false, message: err instanceof Error ? err.message : '報名連線失敗' }
   }
 }
 
-/**
- * 探索參加者：使用原子交易 (RPC) 報名活動，自動鎖定名額並扣減
- */
-export async function registerEventInSupabase(
-  eventId: string,
-  userId: string = 'user-me',
-  userName: string = '林淑芬',
-  userAvatar?: string
-): Promise<{ success: boolean; message: string }> {
+export async function unregisterEventInSupabase(eventId: string): Promise<OperationResult> {
   try {
-    const { data, error } = await supabase.rpc('register_event_atomic', {
-      p_event_id: eventId,
-      p_user_id: userId,
-      p_user_name: userName,
-      p_user_avatar: userAvatar || null,
-    })
-
-    if (error) {
-      console.error('Supabase register atomic RPC error:', error)
-      return { success: false, message: error.message || '報名失敗，請稍後再試' }
-    }
-
-    const res = data as { success: boolean; message: string }
-    return res || { success: true, message: '報名成功' }
-  } catch (err: any) {
-    console.error('Failed to register event in Supabase:', err)
-    return { success: false, message: err?.message || '報名連線失敗' }
+    const idToken = await requireVerifiedLineToken()
+    return await callLineApi<OperationResult>('cancel_registration', { eventId }, idToken)
+  } catch (err) {
+    console.error('Failed to cancel registration:', err)
+    return { success: false, message: err instanceof Error ? err.message : '取消連線失敗' }
   }
 }
 
-/**
- * 探索參加者：使用原子交易 (RPC) 取消報名，自動回補活動名額
- */
-export async function unregisterEventInSupabase(
-  eventId: string,
-  userId: string = 'user-me'
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const { data, error } = await supabase.rpc('cancel_event_atomic', {
-      p_event_id: eventId,
-      p_user_id: userId,
-    })
-
-    if (error) {
-      console.error('Supabase unregister atomic RPC error:', error)
-      return { success: false, message: error.message || '取消報名失敗' }
-    }
-
-    const res = data as { success: boolean; message: string }
-    return res || { success: true, message: '已取消報名' }
-  } catch (err: any) {
-    console.error('Failed to unregister event in Supabase:', err)
-    return { success: false, message: err?.message || '取消連線失敗' }
-  }
-}
-
-/**
- * 活動發起人：查閱特定活動的報名名冊與簽到狀態
- */
 export async function fetchEventParticipants(eventId: string): Promise<ParticipantItem[]> {
-  try {
-    const { data, error } = await supabase
-      .from('registrations')
-      .select('id, user_id, user_name, user_avatar, check_in_status, created_at')
-      .eq('event_id', eventId)
-      .eq('status', 'confirmed')
-      .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error('Supabase fetch participants error:', error)
-      return []
-    }
-
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      userId: row.user_id,
-      userName: row.user_name || '熱心夥伴',
-      userAvatar: row.user_avatar || undefined,
-      checkInStatus: row.check_in_status || 'pending',
-      registeredAt: row.created_at ? new Date(row.created_at).toLocaleDateString() : '',
-    }))
-  } catch (err) {
-    console.error('Failed to fetch participants from Supabase:', err)
-    return []
-  }
+  const idToken = await requireVerifiedLineToken()
+  const result = await callLineApi<{ participants: RegistrationRow[] }>('participants', { eventId }, idToken)
+  return result.participants.map(mapParticipant)
 }
 
-/**
- * 活動發起人：更新參加者現場簽到狀態 (checked_in / absent / pending)
- */
 export async function checkInParticipantInSupabase(
   eventId: string,
-  userId: string,
-  status: 'checked_in' | 'absent' | 'pending' = 'checked_in'
+  participantUserId: string,
+  status: 'checked_in' | 'absent' | 'pending' = 'checked_in',
 ): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('check_in_participant', {
-      p_event_id: eventId,
-      p_user_id: userId,
-      p_status: status,
-    })
-
-    if (error) {
-      console.error('Supabase check-in error:', error)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('Failed to check in participant in Supabase:', err)
-    return false
-  }
-}
-
-export async function fetchMyFavorites(userId: string = 'user-me'): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('favorites')
-      .select('event_id')
-      .eq('user_id', userId)
-
-    if (error) {
-      console.warn('Supabase fetch favorites error:', error.message)
-      return []
-    }
-
-    return (data || []).map((f) => f.event_id)
-  } catch (err) {
-    console.warn('Failed to fetch favorites from Supabase:', err)
-    return []
-  }
-}
-
-export async function addFavoriteInSupabase(
-  eventId: string,
-  userId: string = 'user-me'
-): Promise<boolean> {
-  try {
-    const { error } = await supabase.from('favorites').upsert(
-      {
-        event_id: eventId,
-        user_id: userId,
-      },
-      { onConflict: 'user_id,event_id' }
+    const idToken = await requireVerifiedLineToken()
+    const result = await callLineApi<OperationResult>(
+      'check_in',
+      { eventId, participantUserId, status },
+      idToken,
     )
-
-    if (error) {
-      console.error('Supabase add favorite error:', error)
-      return false
-    }
-    return true
+    return result.success
   } catch (err) {
-    console.error('Failed to add favorite in Supabase:', err)
+    console.error('Failed to update check-in:', err)
     return false
   }
 }
 
-export async function removeFavoriteInSupabase(
-  eventId: string,
-  userId: string = 'user-me'
-): Promise<boolean> {
+export async function addFavoriteInSupabase(eventId: string): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('favorites')
-      .delete()
-      .eq('event_id', eventId)
-      .eq('user_id', userId)
-
-    if (error) {
-      console.error('Supabase remove favorite error:', error)
-      return false
-    }
+    const idToken = await requireVerifiedLineToken()
+    await callLineApi('set_favorite', { eventId, favorite: true }, idToken)
     return true
   } catch (err) {
-    console.error('Failed to remove favorite in Supabase:', err)
+    console.error('Failed to add favorite:', err)
     return false
   }
 }
 
+export async function removeFavoriteInSupabase(eventId: string): Promise<boolean> {
+  try {
+    const idToken = await requireVerifiedLineToken()
+    await callLineApi('set_favorite', { eventId, favorite: false }, idToken)
+    return true
+  } catch (err) {
+    console.error('Failed to remove favorite:', err)
+    return false
+  }
+}

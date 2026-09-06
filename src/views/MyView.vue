@@ -19,7 +19,7 @@ import {
   Trees,
   UsersRound,
 } from 'lucide-vue-next'
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandLogo from '@/components/BrandLogo.vue'
 import EventCard from '@/components/EventCard.vue'
@@ -55,7 +55,7 @@ if (registeredEvents.value.length > 0) {
 const activityTabs: ActivityTab[] = ['即將開始', '已報名', '我發起的', '已結束']
 
 // 個人設定表單資料
-const userDisplayName = shallowRef(liffProfile.value?.displayName || '林淑芬')
+const userDisplayName = shallowRef(liffProfile.value?.displayName || '')
 const fontSizeSetting = shallowRef<'standard' | 'large'>('standard')
 const lineReminderSetting = shallowRef(true)
 
@@ -65,28 +65,11 @@ const todayDateLabel = computed(() => {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`
 })
 
-const defaultCreatedSeedEvent: EventItem = {
-  id: 'seed-walk-manage',
-  title: '樂齡晨間健走',
-  type: '健走',
-  difficulty: '輕鬆',
-  dateKey: 'today',
-  isoDate: '2026-08-16',
-  dateLabel: '8 月 16 日',
-  time: '上午 9:00',
-  park: parks[0] || { id: 'daan-forest', name: '大安森林公園', district: '台北市大安區', address: '', meeting: '2 號出口旁廣場' },
-  spots: 6,
-  maxSpots: 12,
-  cost: '免費',
-  audience: '適合 50 歲以上長輩與初學者',
-  description: '適合長輩的輕鬆健走活動，路線平緩安全，沿途在樹蔭下漫步交流。',
-  items: '自備飲用水、遮陽帽、穿著運動鞋',
-  distanceKm: 0.8,
-  organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
-}
+const myOrganizedEvents = computed<readonly EventItem[]>(() => state.createdEvents.filter((event) => event.status !== 'ended'))
+const endedOrganizedEvents = computed<readonly EventItem[]>(() => state.createdEvents.filter((event) => event.status === 'ended'))
 
-const myOrganizedEvents = computed<readonly EventItem[]>(() => {
-  return state.createdEvents.length > 0 ? state.createdEvents : [defaultCreatedSeedEvent]
+watch(liffProfile, (profile) => {
+  userDisplayName.value = profile?.displayName || ''
 })
 
 function toggleNotificationExpand(id: string) {
@@ -189,7 +172,7 @@ function saveSettings() {
         <small v-if="currentSubView === 'activities'">{{ currentActivityTab }}</small>
         <small v-else-if="currentSubView === 'favorites'">{{ favoriteEvents.length }} 個活動</small>
         <small v-else-if="currentSubView === 'parks'">收藏與常去公園</small>
-        <small v-else-if="currentSubView === 'notifications'">2 則近期通知</small>
+        <small v-else-if="currentSubView === 'notifications'">{{ registeredEvents.length }} 則近期通知</small>
         <small v-else-if="currentSubView === 'settings'">字級與提醒</small>
       </div>
       <span class="subpage-header__spacer" aria-hidden="true"></span>
@@ -205,19 +188,24 @@ function saveSettings() {
             <p>{{ todayDateLabel }}</p>
           </div>
         </div>
-        <div class="timeline">
+        <div v-if="todayEvent" class="timeline">
           <div class="timeline-item">
-            <div class="timeline-time">{{ todayEvent ? todayEvent.time : '09:00' }}</div>
-            <button class="timeline-card" type="button" @click="todayEvent ? openEvent(todayEvent) : router.push('/activity/morning-walk')">
-              <h3>{{ todayEvent ? todayEvent.title : '樂齡晨間健走' }}</h3>
-              <p>{{ todayEvent ? todayEvent.park.name + '・' + todayEvent.park.meeting : '大安森林公園・2 號出口旁廣場' }}</p>
+            <div class="timeline-time">{{ todayEvent.time }}</div>
+            <button class="timeline-card" type="button" @click="openEvent(todayEvent)">
+              <h3>{{ todayEvent.title }}</h3>
+              <p>{{ todayEvent.park.name }}・{{ todayEvent.park.meeting }}</p>
               <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
                 <span class="tag tag--success">已報名</span>
-                <span class="tag tag--info" style="cursor: pointer; background: #e0f2fe; color: #0369a1;" @click.stop="navigateToMeeting(todayEvent || undefined)">🧭 導航至集合點</span>
-                <span class="tag tag--info" style="cursor: pointer; background: #dcfce7; color: #15803d;" @click.stop="addToCalendar(todayEvent || undefined)">📅 加入日曆</span>
+                <span class="tag tag--info" style="cursor: pointer; background: #e0f2fe; color: #0369a1;" @click.stop="navigateToMeeting(todayEvent)">🧭 導航至集合點</span>
+                <span class="tag tag--info" style="cursor: pointer; background: #dcfce7; color: #15803d;" @click.stop="addToCalendar(todayEvent)">📅 加入日曆</span>
               </div>
             </button>
           </div>
+        </div>
+        <div v-else class="empty-state">
+          <h3>今天沒有已報名的行程</h3>
+          <p>到探索頁看看附近有哪些活動。</p>
+          <button class="button button--primary" type="button" @click="router.push('/explore')">探索活動</button>
         </div>
       </section>
 
@@ -331,35 +319,28 @@ function saveSettings() {
           @change="router.push('/manage')"
           @end="router.push('/manage')"
         />
+        <div v-if="!myOrganizedEvents.length" class="empty-state">
+          <h3>目前沒有你發起的活動</h3>
+          <p>建立後會以 LINE 驗證身分同步到這裡。</p>
+          <button class="button button--primary" type="button" @click="router.push('/create')">發起活動</button>
+        </div>
       </div>
 
       <div v-else-if="currentActivityTab === '已結束'" class="result-list">
         <ManageEventCard
-          :event="{
-            id: 'ended-walk-archive',
-            title: '公園午後散步',
-            type: '散步',
-            difficulty: '輕鬆',
-            dateKey: 'today',
-            isoDate: '2026-08-02',
-            dateLabel: '8 月 2 日',
-            time: '下午 3:00',
-            park: parks[1] || { id: 'cksm', name: '中正紀念堂園區', district: '台北市中正區', address: '', meeting: '大門階梯前' },
-            spots: 8,
-            maxSpots: 8,
-            cost: '免費',
-            audience: '全年齡皆宜',
-            description: '午後散步交流。',
-            items: '水壺、遮陽傘',
-            distanceKm: 1.2,
-            organizer: { name: '我', role: '活動發起人', rating: '5.0', organized: 1, verified: true },
-          }"
+          v-for="event in endedOrganizedEvents"
+          :key="event.id"
+          :event="event"
           status="ended"
           @edit="router.push('/manage')"
           @attendees="router.push('/manage')"
           @change="router.push('/manage')"
           @end="router.push('/manage')"
         />
+        <div v-if="!endedOrganizedEvents.length" class="empty-state">
+          <h3>目前沒有已結束的活動</h3>
+          <p>完成的主辦活動會顯示在這裡。</p>
+        </div>
       </div>
     </main>
 
@@ -667,4 +648,3 @@ function saveSettings() {
     </div>
   </div>
 </template>
-

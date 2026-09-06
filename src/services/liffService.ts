@@ -1,6 +1,7 @@
 import liff from '@line/liff'
 import { reactive, readonly } from 'vue'
 import type { EventItem } from '@/data/events'
+import { callLineApi } from './lineApiService'
 
 export interface LiffUserProfile {
   userId: string
@@ -14,28 +15,55 @@ interface LiffState {
   isInClient: boolean
   isLoggedIn: boolean
   profile: LiffUserProfile | null
+  sessionExpiresAt: number | null
   error: string | null
+}
+
+interface VerifiedLineSession {
+  user: LiffUserProfile
+  expiresAt: number
+}
+
+export class LineAuthRequiredError extends Error {
+  constructor(message = '請先登入 LINE 後再繼續。') {
+    super(message)
+    this.name = 'LineAuthRequiredError'
+  }
 }
 
 const state = reactive<LiffState>({
   isInitialized: false,
   isInClient: false,
   isLoggedIn: false,
-  profile: {
-    userId: 'user-me',
-    displayName: '林淑芬',
-    pictureUrl: '',
-  },
+  profile: null,
+  sessionExpiresAt: null,
   error: null,
 })
 
+let initialization: Promise<void> | null = null
+
+async function establishVerifiedSession(idToken: string): Promise<void> {
+  const session = await callLineApi<VerifiedLineSession>('session', {}, idToken)
+  state.profile = session.user
+  state.sessionExpiresAt = session.expiresAt
+  state.error = null
+}
+
 export async function initLiff(): Promise<void> {
+  if (initialization) return initialization
+
+  initialization = initializeLiff()
+  return initialization
+}
+
+async function initializeLiff(): Promise<void> {
   const liffId = import.meta.env.VITE_LIFF_ID as string | undefined
 
   if (!liffId || !liffId.trim()) {
     state.isInitialized = true
     state.isInClient = false
     state.isLoggedIn = false
+    state.profile = null
     return
   }
 
@@ -46,25 +74,42 @@ export async function initLiff(): Promise<void> {
 
     if (liff.isLoggedIn()) {
       state.isLoggedIn = true
-      try {
-        const profile = await liff.getProfile()
-        state.profile = {
-          userId: profile.userId,
-          displayName: profile.displayName,
-          pictureUrl: profile.pictureUrl,
-          statusMessage: profile.statusMessage,
-        }
-      } catch (err) {
-        console.warn('Failed to get LIFF profile:', err)
-      }
-    } else if (liff.isInClient()) {
-      // 在 LINE 內部環境若未登入，可自動觸發
+      const idToken = liff.getIDToken()
+      if (!idToken) throw new LineAuthRequiredError('LINE 登入憑證無法取得，請重新開啟應用程式。')
+      await establishVerifiedSession(idToken)
+    } else {
+      state.profile = null
     }
   } catch (err) {
     state.isInitialized = true
     state.error = err instanceof Error ? err.message : String(err)
     console.warn('LIFF init failed (running in fallback web mode):', err)
   }
+}
+
+export async function requireVerifiedLineToken(promptLogin = true): Promise<string> {
+  await initLiff()
+
+  const liffId = import.meta.env.VITE_LIFF_ID as string | undefined
+  if (!liffId?.trim()) {
+    throw new LineAuthRequiredError('目前環境尚未設定 LINE 登入。')
+  }
+
+  if (!liff.isLoggedIn()) {
+    if (promptLogin && typeof window !== 'undefined') {
+      liff.login({ redirectUri: window.location.href })
+    }
+    throw new LineAuthRequiredError()
+  }
+
+  const idToken = liff.getIDToken()
+  if (!idToken) throw new LineAuthRequiredError('LINE 登入憑證已失效，請重新登入。')
+
+  if (!state.profile || (state.sessionExpiresAt ?? 0) * 1000 <= Date.now()) {
+    await establishVerifiedSession(idToken)
+  }
+
+  return idToken
 }
 
 export async function shareActivityToLine(event: EventItem): Promise<{ success: boolean; message: string }> {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Calendar, Check, Download, ExternalLink, Smartphone, X } from 'lucide-vue-next'
 import type { EventItem } from '@/data/events'
+import { shallowRef, watch } from 'vue'
 import { downloadIcsCalendar, generateGoogleCalendarUrl } from '@/utils/calendarUtils'
 
 const props = defineProps<{
@@ -12,20 +13,30 @@ const emit = defineEmits<{
   close: []
   added: [type: 'google' | 'apple']
 }>()
+const errorMessage = shallowRef('')
+watch(() => props.show, () => { errorMessage.value = '' })
 
 function addToGoogle() {
   if (!props.event) return
-  const url = generateGoogleCalendarUrl(props.event)
-  window.open(url, '_blank', 'noopener,noreferrer')
-  emit('added', 'google')
-  emit('close')
+  try {
+    const url = generateGoogleCalendarUrl(props.event)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    emit('added', 'google')
+    emit('close')
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : '無法加入日曆，請確認活動時間後重試'
+  }
 }
 
 function addToApple() {
   if (!props.event) return
-  downloadIcsCalendar(props.event)
-  emit('added', 'apple')
-  emit('close')
+  try {
+    downloadIcsCalendar(props.event)
+    emit('added', 'apple')
+    emit('close')
+  } catch (err) {
+    errorMessage.value = err instanceof Error ? err.message : '無法匯出日曆，請確認活動時間後重試'
+  }
 }
 </script>
 
@@ -49,8 +60,9 @@ function addToApple() {
 
         <div style="padding: 0 20px;">
           <p style="margin: 0 0 16px; color: var(--ink-soft); font-size: 0.92rem; line-height: 1.5;">
-            請選擇您習慣使用的日曆，活動開始前 1 小時會自動發送出發提醒：
+            請選擇慣用日曆，並在開啟的畫面確認加入。提醒時間請依您的日曆設定確認。
           </p>
+          <p v-if="errorMessage" class="calendar-error" role="alert">{{ errorMessage }}</p>
 
           <div style="display: grid; gap: 12px;">
             <!-- 1. Google 日曆 -->
@@ -97,6 +109,7 @@ function addToApple() {
 </template>
 
 <style scoped>
+.calendar-error { color: #9c332a; line-height: 1.5; }
 .cal-option-btn {
   display: flex;
   align-items: center;

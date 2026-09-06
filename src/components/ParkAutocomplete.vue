@@ -2,15 +2,8 @@
 import { Building2, Check, Loader2, MapPin, Search, Sparkles, X } from 'lucide-vue-next'
 import { nextTick, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { parks } from '@/data/events'
-
-export interface SelectedParkResult {
-  name: string
-  address: string
-  district: string
-  lat?: number
-  lng?: number
-  placeId?: string
-}
+import type { SelectedParkResult } from '@/types/places'
+export type { SelectedParkResult } from '@/types/places'
 
 interface PlaceSuggestion {
   placeId: string
@@ -28,6 +21,8 @@ const props = withDefaults(
     placeholder?: string
     modelValue?: string
     autoFocus?: boolean
+    invalid?: boolean
+    describedBy?: string
   }>(),
   {
     placeholder: '輸入地點或公園名稱',
@@ -314,6 +309,10 @@ function handleBlur() {
       <Search :size="20" class="search-icon" aria-hidden="true" />
       <input
         id="pac-input"
+        name="park-search"
+        aria-label="搜尋公園或活動地點"
+        :aria-invalid="invalid || undefined"
+        :aria-describedby="describedBy"
         ref="inputRef"
         type="text"
         :value="query"

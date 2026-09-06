@@ -1,108 +1,40 @@
 <script setup lang="ts">
-import { CalendarDays, ChevronRight, Clock3, History, Map, MapPin, Pencil, RotateCcw, Search, UsersRound } from 'lucide-vue-next'
+import { CalendarDays, ChevronRight, Clock3, MapPin, Pencil, RotateCcw, UsersRound } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
-import ParkAutocomplete, { type SelectedParkResult } from '@/components/ParkAutocomplete.vue'
+import ParkAutocomplete from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
-
-type PickerName = 'park' | 'meeting'
-type ParkTab = 'history' | 'search' | 'map'
+import type { SelectedParkResult } from '@/types/places'
+import type { CreateValidationErrors } from '@/composables/useCreateEventDraft'
 
 const props = defineProps<{
   isoDate: string
   time: string
   endTime: string
-  parkId: string
   meeting: string
-  parks: Park[]
+  selectedPark: Park | null
   todayIso: string
-  tomorrowIso: string
-  dateLabel: string
-  timeLabel: string
+  errors?: CreateValidationErrors
 }>()
 
 const emit = defineEmits<{
   'update:isoDate': [value: string]
   'update:time': [value: string]
   'update:endTime': [value: string]
-  'update:parkId': [value: string]
   'update:meeting': [value: string]
+  'select-place': [place: SelectedParkResult]
+  'clear-park': []
 }>()
 
-const openPicker = shallowRef<PickerName | null>(null)
-const parkTab = shallowRef<ParkTab>('history')
-const parkSearchQuery = shallowRef('')
+const openPicker = shallowRef<'meeting' | null>(null)
 const customMeetingOpen = shallowRef(false)
 const customMeeting = shallowRef('')
-
-const selectedGooglePark = shallowRef<SelectedParkResult | null>(
-  props.parkId
-    ? {
-        name: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.name || props.parkId,
-        address: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.address || '',
-        district: props.parks.find((p) => p.id === props.parkId || p.name === props.parkId)?.district || '台北市',
-      }
-    : null
-)
-
-const selectedPark = computed(() => {
-  if (selectedGooglePark.value) {
-    return {
-      id: selectedGooglePark.value.name,
-      name: selectedGooglePark.value.name,
-      district: selectedGooglePark.value.district,
-      address: selectedGooglePark.value.address,
-      meeting: '公園主要入口處',
-    }
-  }
-  return props.parks.find((park) => park.id === props.parkId || park.name === props.parkId) ?? props.parks[0]
-})
-
-function handleGoogleParkSelect(result: SelectedParkResult) {
-  selectedGooglePark.value = result
-  emit('update:parkId', result.name)
-  emit('update:meeting', `${result.name}入口廣場`)
-}
-
-function clearSelectedPark() {
-  selectedGooglePark.value = null
-  emit('update:parkId', '')
-}
-
 const meetingOptions = computed(() => Array.from(new Set([
-  selectedPark.value?.meeting,
-  '公園入口處',
-  '捷運站出口旁',
-  '服務中心前',
-  '涼亭前廣場',
+  props.selectedPark?.meeting,
+  '公園入口處', '捷運站出口旁', '服務中心前', '涼亭前廣場',
 ].filter((value): value is string => Boolean(value)))))
 
-function togglePicker(name: PickerName) {
+function togglePicker(name: 'meeting') {
   openPicker.value = openPicker.value === name ? null : name
-}
-
-function selectDate(value: string) {
-  emit('update:isoDate', value)
-}
-
-function addMinutesToTime(value: string, minutes: number) {
-  const [hour = '0', minute = '0'] = value.split(':')
-  const totalMinutes = Number(hour) * 60 + Number(minute) + minutes
-  const normalizedMinutes = totalMinutes % (24 * 60)
-  return `${String(Math.floor(normalizedMinutes / 60)).padStart(2, '0')}:${String(normalizedMinutes % 60).padStart(2, '0')}`
-}
-
-function updateStartTime(value: string) {
-  emit('update:time', value)
-  if (props.endTime <= value) emit('update:endTime', addMinutesToTime(value, 60))
-}
-
-function updateEndTime(value: string) {
-  emit('update:endTime', value > props.time ? value : addMinutesToTime(props.time, 60))
-}
-
-function selectPark(value: string) {
-  emit('update:parkId', value)
-  openPicker.value = null
 }
 
 function selectMeeting(value: string) {
@@ -112,9 +44,7 @@ function selectMeeting(value: string) {
 }
 
 function saveCustomMeeting() {
-  const value = customMeeting.value.trim()
-  if (!value) return
-  selectMeeting(value)
+  if (customMeeting.value.trim()) selectMeeting(customMeeting.value.trim())
 }
 </script>
 
@@ -129,13 +59,17 @@ function saveCustomMeeting() {
       <div class="schedule-row-control">
         <input
           id="create-direct-date"
+          name="event-date"
           :value="isoDate"
           type="date"
           :min="todayIso"
           class="schedule-direct-input"
-          @change="selectDate(($event.target as HTMLInputElement).value)"
+          :aria-invalid="Boolean(errors?.isoDate)"
+          :aria-describedby="errors?.isoDate ? 'create-date-error' : undefined"
+          @change="emit('update:isoDate', ($event.target as HTMLInputElement).value)"
         />
       </div>
+      <p v-if="errors?.isoDate" id="create-date-error" class="schedule-field-error">{{ errors.isoDate }}</p>
     </div>
 
     <!-- 2. 時間選擇 -->
@@ -153,7 +87,9 @@ function saveCustomMeeting() {
           type="time"
           autocomplete="off"
           class="schedule-time-input"
-          @change="updateStartTime(($event.target as HTMLInputElement).value)"
+          :aria-invalid="Boolean(errors?.time)"
+          :aria-describedby="errors?.time ? 'create-start-time-error' : undefined"
+          @change="emit('update:time', ($event.target as HTMLInputElement).value)"
         />
         <span class="schedule-time-tilde" aria-hidden="true">至</span>
         <input
@@ -165,9 +101,13 @@ function saveCustomMeeting() {
           :min="time"
           autocomplete="off"
           class="schedule-time-input"
-          @change="updateEndTime(($event.target as HTMLInputElement).value)"
+          :aria-invalid="Boolean(errors?.endTime)"
+          :aria-describedby="errors?.endTime ? 'create-end-time-error' : undefined"
+          @change="emit('update:endTime', ($event.target as HTMLInputElement).value)"
         />
       </div>
+      <p v-if="errors?.time" id="create-start-time-error" class="schedule-field-error">{{ errors.time }}</p>
+      <p v-if="errors?.endTime" id="create-end-time-error" class="schedule-field-error">{{ errors.endTime }}</p>
     </div>
 
     <!-- 3. 活動地點選擇 (直接顯示於介面，自動適應 RWD Auto Layout) -->
@@ -178,22 +118,22 @@ function saveCustomMeeting() {
       </div>
       <div class="schedule-row-control">
         <!-- 已選定活動地點資訊卡片 -->
-        <div v-if="selectedGooglePark" class="selected-google-park-card">
+        <div v-if="selectedPark" class="selected-google-park-card">
           <div class="selected-google-park-card__header">
             <span class="tag tag--success">✓ 已選定活動地點</span>
-            <button class="btn-re-search" type="button" @click="clearSelectedPark">
+            <button class="btn-re-search" type="button" @click="emit('clear-park')">
               <RotateCcw :size="14" aria-hidden="true" />
               <span>重新搜尋其他地點</span>
             </button>
           </div>
           <div class="selected-google-park-card__body">
             <div class="selected-google-park-icon">
-              <MapPin :size="22" />
+              <MapPin :size="22" aria-hidden="true" />
             </div>
             <div class="selected-google-park-text">
-              <strong>{{ selectedGooglePark.name }}</strong>
-              <span v-if="selectedGooglePark.address">{{ selectedGooglePark.address }}</span>
-              <small v-if="selectedGooglePark.district">{{ selectedGooglePark.district }}</small>
+              <strong>{{ selectedPark.name }}</strong>
+              <span v-if="selectedPark.address">{{ selectedPark.address }}</span>
+              <small v-if="selectedPark.district">{{ selectedPark.district }}</small>
             </div>
           </div>
         </div>
@@ -203,10 +143,13 @@ function saveCustomMeeting() {
           <ParkAutocomplete
             placeholder="輸入地點或公園名稱"
             :auto-focus="false"
-            @select="handleGoogleParkSelect"
+            :invalid="Boolean(errors?.park)"
+            :described-by="errors?.park ? 'create-park-error' : undefined"
+            @select="emit('select-place', $event)"
           />
         </div>
       </div>
+      <p v-if="errors?.park" id="create-park-error" class="schedule-field-error">{{ errors.park }}</p>
     </div>
 
     <!-- 4. 集合地點選擇 (統一 Auto Layout 輸入框規格) -->
@@ -216,21 +159,22 @@ function saveCustomMeeting() {
         <span class="schedule-row-title">集合地點</span>
       </div>
       <div class="schedule-row-control">
-        <div
+        <button
+          id="create-meeting-button"
           class="schedule-fake-input"
-          role="button"
-          tabindex="0"
+          type="button"
           :class="{ 'is-active': openPicker === 'meeting' }"
           aria-controls="create-meeting-picker"
           :aria-expanded="openPicker === 'meeting'"
+          :aria-invalid="Boolean(errors?.meeting)"
+          :aria-describedby="errors?.meeting ? 'create-meeting-error' : undefined"
           @click="togglePicker('meeting')"
-          @keydown.enter="togglePicker('meeting')"
-          @keydown.space.prevent="togglePicker('meeting')"
         >
           <span class="schedule-fake-input__text">{{ meeting || '請先選擇活動地點或自訂集合處' }}</span>
           <ChevronRight :size="18" class="schedule-fake-input__icon" :class="{ 'is-rotated': openPicker === 'meeting' }" aria-hidden="true" />
-        </div>
+        </button>
       </div>
+      <p v-if="errors?.meeting" id="create-meeting-error" class="schedule-field-error">{{ errors.meeting }}</p>
     </div>
     <div v-show="openPicker === 'meeting'" id="create-meeting-picker" class="schedule-picker-panel" aria-label="選擇集合地點">
       <div class="schedule-choice-grid schedule-choice-grid--three">
@@ -247,3 +191,8 @@ function saveCustomMeeting() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.schedule-field-error { margin: 4px 0 0; color: #9c332a; font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
+.schedule-fake-input { width: 100%; text-align: left; }
+</style>

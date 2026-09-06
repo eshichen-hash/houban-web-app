@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Minus, Plus, Sparkles, UsersRound, X } from 'lucide-vue-next'
-import { computed, shallowRef, watch } from 'vue'
+import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedActivitySettings from '@/components/create/AdvancedActivitySettings.vue'
 import CreateScheduleSelector from '@/components/create/CreateScheduleSelector.vue'
@@ -15,9 +15,7 @@ const router = useRouter()
 const { createEvent } = useAppState()
 const {
   form,
-  parks,
   todayIso,
-  tomorrowIso,
   selectedPark,
   dateLabel,
   timeLabel,
@@ -25,6 +23,8 @@ const {
   generatedIntro,
   displayName,
   canCreate,
+  validationErrors,
+  validate,
   nameIsCustom,
   introIsCustom,
   updateName,
@@ -32,6 +32,7 @@ const {
   updateIntro,
   resetGeneratedIntro,
   selectPark,
+  selectPlace,
   changeSpots,
   normaliseSpots,
   buildEventInput,
@@ -40,6 +41,22 @@ const {
 const showTypeSheet = shallowRef(false)
 const guideOpen = shallowRef(false)
 const statusMessage = shallowRef('')
+const isSubmitting = shallowRef(false)
+const submitAttempted = shallowRef(false)
+const saveError = shallowRef('')
+const feedbackRef = useTemplateRef<HTMLElement>('feedbackRef')
+const creationId = `created-${crypto.randomUUID()}`
+const fieldErrors = computed(() => submitAttempted.value ? validationErrors.value : {})
+const fieldIds = {
+  type: 'create-type-choice', isoDate: 'create-direct-date', time: 'create-custom-start-time',
+  endTime: 'create-custom-end-time', park: 'pac-input', meeting: 'create-meeting-button', spots: 'create-spots',
+} as const
+
+function focusField(field: keyof typeof fieldIds) {
+  const control = document.getElementById(fieldIds[field])
+  control?.focus({ preventScroll: true })
+  control?.scrollIntoView({ block: 'center' })
+}
 
 const featuredTypes = computed(() => {
   const featured = fullActivityTypes.filter((t) => t.featured).slice(0, 6).map((t) => t.name)
@@ -58,14 +75,26 @@ watch(() => form.type, () => {
   statusMessage.value = form.type ? `已選 ${form.type}` : '請選擇一種活動類型'
 })
 
-function submit() {
-  if (!canCreate.value) {
-    statusMessage.value = '請先選擇一種活動類型'
+async function submit() {
+  if (isSubmitting.value) return
+  submitAttempted.value = true
+  saveError.value = ''
+  if (Object.keys(validate()).length) {
+    await nextTick()
+    feedbackRef.value?.focus()
     return
   }
-  const created = createEvent(buildEventInput())
-  statusMessage.value = `示意：已建立「${created.title}」`
-  router.push('/manage')
+  isSubmitting.value = true
+  try {
+    const created = await createEvent(buildEventInput(), creationId)
+    statusMessage.value = `已建立「${created.title}」`
+    await router.push('/manage')
+  } catch (err) {
+    saveError.value = err instanceof Error ? err.message : '活動未能儲存，請稍後重試。表單內容已保留。'
+  } finally {
+    isSubmitting.value = false
+    if (saveError.value) { await nextTick(); feedbackRef.value?.focus() }
+  }
 }
 </script>
 
@@ -93,6 +122,14 @@ function submit() {
         <button class="text-link intro-card__link" type="button" aria-controls="create-guide-details" :aria-expanded="guideOpen" @click="guideOpen = !guideOpen">{{ guideOpen ? '收起說明' : '查看怎麼發起' }} <ChevronDown :size="18" aria-hidden="true" /></button>
       </section>
 
+      <section v-if="saveError || (submitAttempted && !canCreate)" ref="feedbackRef" class="create-feedback" role="alert" tabindex="-1" aria-labelledby="create-feedback-title">
+        <h2 id="create-feedback-title">{{ saveError ? '活動尚未完成建立' : '請確認以下欄位' }}</h2>
+        <p v-if="saveError">{{ saveError }}</p>
+        <ul v-else><li v-for="(message, field) in fieldErrors" :key="field"><a :href="`#${fieldIds[field]}`" @click.prevent="focusField(field)">{{ message }}</a></li></ul>
+      </section>
+
+      <fieldset class="create-fields" :disabled="isSubmitting" :aria-busy="isSubmitting">
+      <legend class="sr-only">建立活動資料</legend>
       <section class="form-section form-section--transparent-bg" aria-labelledby="step-one-title">
         <div class="step-heading">
           <div>
@@ -104,7 +141,7 @@ function submit() {
             <span v-else>請選 1 種</span>
           </span>
         </div>
-        <div class="activity-type-grid" role="radiogroup" aria-label="請選擇 1 種活動類型">
+        <div id="create-type-choice" class="activity-type-grid" role="radiogroup" tabindex="-1" aria-label="請選擇 1 種活動類型" :aria-describedby="fieldErrors.type ? 'create-type-error' : undefined">
           <button
             v-for="type in featuredTypes"
             :key="type"
@@ -119,6 +156,7 @@ function submit() {
             <span>{{ type }}</span>
           </button>
         </div>
+        <p v-if="fieldErrors.type" id="create-type-error" class="create-field-error">{{ fieldErrors.type }}</p>
         <button class="full-width-choice full-width-choice--types" type="button" aria-label="查看全部 15 種活動" @click="showTypeSheet = true">
           <span>查看全部 15 種活動</span>
           <ChevronRight :size="18" aria-hidden="true" />
@@ -170,17 +208,15 @@ function submit() {
           :iso-date="form.isoDate"
           :time="form.time"
           :end-time="form.endTime"
-          :park-id="form.parkId"
+          :selected-park="selectedPark"
+          :errors="fieldErrors"
           :meeting="form.meeting"
-          :parks="parks"
           :today-iso="todayIso"
-          :tomorrow-iso="tomorrowIso"
-          :date-label="dateLabel"
-          :time-label="timeLabel"
           @update:iso-date="form.isoDate = $event"
           @update:time="form.time = $event"
           @update:end-time="form.endTime = $event"
-          @update:park-id="selectPark"
+          @select-place="selectPlace"
+          @clear-park="selectPark('')"
           @update:meeting="form.meeting = $event"
         />
         <EditableActivityName
@@ -198,9 +234,10 @@ function submit() {
         <div class="field-heading"><strong>活動名額</strong><span>3–50 人</span></div>
         <div class="stepper-field">
           <button class="icon-button" type="button" aria-label="減少活動名額" @click="changeSpots(-1)"><Minus :size="20" aria-hidden="true" /></button>
-          <label><input v-model.number="form.spots" type="number" min="3" max="50" aria-label="活動名額" @blur="normaliseSpots" /><span>人</span></label>
+          <label><input id="create-spots" v-model.number="form.spots" name="event-spots" type="number" min="3" max="50" aria-label="活動名額" :aria-invalid="Boolean(fieldErrors.spots)" :aria-describedby="fieldErrors.spots ? 'create-spots-error' : undefined" @blur="normaliseSpots" /><span>人</span></label>
           <button class="icon-button" type="button" aria-label="增加活動名額" @click="changeSpots(1)"><Plus :size="20" aria-hidden="true" /></button>
         </div>
+        <p v-if="fieldErrors.spots" id="create-spots-error" class="create-field-error">{{ fieldErrors.spots }}</p>
         <p class="helper-text">可直接輸入，或使用加減按鈕。</p>
 
         <div class="field-heading"><strong>體力需求</strong><span>依活動步調選擇</span></div>
@@ -227,6 +264,7 @@ function submit() {
       </section>
 
       <AdvancedActivitySettings v-model:audience="form.audience" v-model:items="form.items" v-model:image="form.image" />
+      </fieldset>
 
       <section class="summary-card create-summary" aria-labelledby="create-summary-title">
         <h2 id="create-summary-title">活動摘要</h2>
@@ -235,9 +273,19 @@ function submit() {
         <strong>{{ selectedPark?.name }}</strong>
         <span>{{ form.meeting }}・{{ form.spots }} 人・{{ form.difficulty }}・{{ form.cost }}</span>
       </section>
-      <button class="button button--primary button--full create-submit" type="button" :disabled="!canCreate" @click="submit">建立活動 <span aria-hidden="true">→</span></button>
+      <button class="button button--primary button--full create-submit" type="button" :disabled="isSubmitting" :aria-busy="isSubmitting" @click="submit">{{ isSubmitting ? '正在儲存活動…' : saveError ? '重試建立活動' : '建立活動' }} <span v-if="!isSubmitting" aria-hidden="true">→</span></button>
       <p class="create-note">確認摘要後直接建立，之後仍可在活動管理中編輯。</p>
     </main>
     <p class="sr-only" role="status" aria-live="polite">{{ statusMessage }}</p>
   </div>
 </template>
+
+<style scoped>
+.create-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.create-fields:disabled { opacity: .72; }
+.create-feedback { margin-block: 20px; padding: 18px; border: 1px solid #c37165; border-radius: 18px; background: #fff5f0; color: #82352b; overflow-wrap: anywhere; scroll-margin-top: 110px; }
+.create-feedback h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.create-feedback p, .create-feedback ul { margin: 0; }
+.create-feedback a { color: inherit; text-decoration: underline; }
+.create-field-error { margin: 8px 0; color: #9c332a; font-size: .9rem; }
+</style>

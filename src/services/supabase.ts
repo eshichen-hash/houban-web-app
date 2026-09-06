@@ -1,6 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://dpyputseylxmvitagkgh.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRweXB1dHNleWx4bXZpdGFna2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NTk1MjMsImV4cCI6MjEwNDAzNTUyM30.U046SvKPopg0GC-SUo7AgIhHJfSIz6DkMNk2iUAW29c'
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+export const supabasePublishableKey = (
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  || import.meta.env.VITE_SUPABASE_ANON_KEY
+)?.trim()
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabasePublishableKey) {
+  throw new Error('缺少 Supabase 公開環境設定，請確認 VITE_SUPABASE_URL 與 publishable／anon key。')
+}
+
+export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+})

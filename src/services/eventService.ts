@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
-import type { EventItem, Park, Difficulty, Cost, EventType } from '@/data/events'
+import { callLineApi } from './lineApiService'
+import { LineAuthRequiredError, requireVerifiedLineToken } from './liffService'
+import type { EventItem, Park, Difficulty, Cost, EventStatus, EventType } from '@/data/events'
+import { eventDateKey, formatEventDate } from '@/utils/eventDateTime'
 
 export interface EventRow {
   id: string
@@ -25,7 +28,7 @@ export interface EventRow {
   items: string | null
   image: string | null
   image_alt: string | null
-  organizer_id: string | null
+  organizer_id?: string | null
   organizer_name: string | null
   organizer_role: string | null
   organizer_rating: string | null
@@ -41,8 +44,8 @@ export function mapRowToEvent(row: EventRow): EventItem {
     district: row.park_district || '',
     address: row.park_address || '',
     meeting: row.park_meeting || '入口處',
-    lat: row.park_lat || undefined,
-    lng: row.park_lng || undefined,
+    lat: row.park_lat ?? undefined,
+    lng: row.park_lng ?? undefined,
   }
 
   return {
@@ -50,9 +53,9 @@ export function mapRowToEvent(row: EventRow): EventItem {
     title: row.title,
     type: (row.type || '健走') as EventType,
     difficulty: (row.difficulty || '輕鬆') as Difficulty,
-    dateKey: (row.date_key || 'today') as 'today' | 'tomorrow' | 'week',
+    dateKey: eventDateKey(row.iso_date),
     isoDate: row.iso_date,
-    dateLabel: row.date_label || '今天',
+    dateLabel: formatEventDate(row.iso_date),
     time: row.time,
     park,
     spots: Number(row.spots ?? 6),
@@ -63,7 +66,9 @@ export function mapRowToEvent(row: EventRow): EventItem {
     items: row.items || '自備飲用水',
     image: row.image || undefined,
     imageAlt: row.image_alt || row.title,
+    status: (row.status || 'active') as EventStatus,
     organizer: {
+      id: row.organizer_id ?? undefined,
       name: row.organizer_name || '活動發起人',
       role: row.organizer_role || '發起人',
       rating: row.organizer_rating || '5.0',
@@ -73,14 +78,14 @@ export function mapRowToEvent(row: EventRow): EventItem {
   }
 }
 
-export function mapEventToRow(event: EventItem, status: string = 'active'): EventRow {
+export function mapEventToRow(event: EventItem, status: string = event.status || 'active'): EventRow {
   return {
     id: event.id,
     title: event.title,
     type: event.type,
     difficulty: event.difficulty,
     date_key: event.dateKey,
-    iso_date: event.isoDate || new Date().toISOString().split('T')[0],
+    iso_date: event.isoDate,
     date_label: event.dateLabel || '今天',
     time: event.time,
     park_id: event.park.id,
@@ -88,8 +93,8 @@ export function mapEventToRow(event: EventItem, status: string = 'active'): Even
     park_district: event.park.district,
     park_address: event.park.address,
     park_meeting: event.park.meeting,
-    park_lat: event.park.lat || null,
-    park_lng: event.park.lng || null,
+    park_lat: event.park.lat ?? null,
+    park_lng: event.park.lng ?? null,
     spots: event.spots ?? 6,
     max_spots: event.maxSpots ?? 12,
     cost: event.cost || '免費',
@@ -98,7 +103,7 @@ export function mapEventToRow(event: EventItem, status: string = 'active'): Even
     items: event.items,
     image: event.image || null,
     image_alt: event.imageAlt || null,
-    organizer_id: 'user-me',
+    organizer_id: event.organizer.id ?? null,
     organizer_name: event.organizer?.name || '我',
     organizer_role: event.organizer?.role || '活動發起人',
     organizer_rating: event.organizer?.rating || '5.0',
@@ -108,50 +113,32 @@ export function mapEventToRow(event: EventItem, status: string = 'active'): Even
 }
 
 export async function fetchEventsFromSupabase(): Promise<EventItem[]> {
-  try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('created_at', { ascending: false })
+  const { data, error } = await supabase
+    .from('discoverable_events')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-    if (error) {
-      console.warn('Supabase fetch events error:', error.message)
-      return []
-    }
-
-    if (!data || data.length === 0) {
-      return []
-    }
-
-    return (data as EventRow[]).map(mapRowToEvent)
-  } catch (err) {
-    console.warn('Failed to fetch events from Supabase:', err)
-    return []
-  }
+  if (error) throw new Error(`活動清單同步失敗：${error.message}`)
+  return (data as EventRow[] | null || []).map(mapRowToEvent)
 }
 
-export async function createEventInSupabase(event: EventItem): Promise<boolean> {
+export async function createEventInSupabase(event: EventItem): Promise<EventItem> {
   try {
+    const idToken = await requireVerifiedLineToken()
     const row = mapEventToRow(event, 'active')
-    const { error } = await supabase.from('events').upsert(row)
-    if (error) {
-      console.error('Supabase create event error:', error)
-      return false
-    }
-    return true
+    const result = await callLineApi<{ event: EventRow }>('create_event', { event: row }, idToken)
+    return mapRowToEvent(result.event)
   } catch (err) {
     console.error('Failed to create event in Supabase:', err)
-    return false
+    if (err instanceof LineAuthRequiredError) throw err
+    throw new Error('尚未確認活動儲存成功。請檢查網路後重試，表單內容已保留。')
   }
 }
 
 export async function updateEventStatusInSupabase(id: string, status: 'active' | 'ended' | 'cancelled'): Promise<boolean> {
   try {
-    const { error } = await supabase.from('events').update({ status }).eq('id', id)
-    if (error) {
-      console.error('Supabase update event status error:', error)
-      return false
-    }
+    const idToken = await requireVerifiedLineToken()
+    await callLineApi('update_event_status', { eventId: id, status }, idToken)
     return true
   } catch (err) {
     console.error('Failed to update event status in Supabase:', err)
@@ -161,11 +148,8 @@ export async function updateEventStatusInSupabase(id: string, status: 'active' |
 
 export async function updateEventInSupabase(id: string, updates: Partial<EventRow>): Promise<boolean> {
   try {
-    const { error } = await supabase.from('events').update(updates).eq('id', id)
-    if (error) {
-      console.error('Supabase update event error:', error)
-      return false
-    }
+    const idToken = await requireVerifiedLineToken()
+    await callLineApi('update_event', { eventId: id, updates }, idToken)
     return true
   } catch (err) {
     console.error('Failed to update event in Supabase:', err)
@@ -175,11 +159,8 @@ export async function updateEventInSupabase(id: string, updates: Partial<EventRo
 
 export async function deleteEventInSupabase(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase.from('events').delete().eq('id', id)
-    if (error) {
-      console.error('Supabase delete event error:', error)
-      return false
-    }
+    const idToken = await requireVerifiedLineToken()
+    await callLineApi('delete_event', { eventId: id }, idToken)
     return true
   } catch (err) {
     console.error('Failed to delete event in Supabase:', err)
@@ -187,23 +168,13 @@ export async function deleteEventInSupabase(id: string): Promise<boolean> {
   }
 }
 
-export async function fetchOrganizerEventsFromSupabase(organizerId: string = 'user-me'): Promise<EventItem[]> {
+export async function fetchOrganizerEventsFromSupabase(): Promise<EventItem[]> {
   try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('organizer_id', organizerId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.warn('Supabase fetch organizer events error:', error.message)
-      return []
-    }
-
-    return (data || []).map(mapRowToEvent)
+    const idToken = await requireVerifiedLineToken(false)
+    const result = await callLineApi<{ events: EventRow[] }>('organizer_events', {}, idToken)
+    return result.events.map(mapRowToEvent)
   } catch (err) {
     console.warn('Failed to fetch organizer events from Supabase:', err)
     return []
   }
 }
-

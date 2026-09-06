@@ -3,12 +3,13 @@ import { activityTypes, eventSeed, parks, type DateFilter, type EventItem, type 
 import { createEventInSupabase, fetchEventsFromSupabase } from '@/services/eventService'
 import {
   addFavoriteInSupabase,
-  fetchMyFavorites,
-  fetchMyRegistrations,
+  fetchMyCloudState,
   registerEventInSupabase,
   removeFavoriteInSupabase,
 } from '@/services/registrationService'
+import { useLiff } from '@/services/liffService'
 import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
+import { eventDateKey, formatEventDate, matchesEventDate } from '@/utils/eventDateTime'
 
 const STORAGE_KEY = 'park-good-companion-vue-state'
 interface StoredState {
@@ -41,45 +42,40 @@ const state = reactive({
 
 const cloudEvents = ref<EventItem[]>([])
 const isCloudLoaded = ref(false)
+const { liffState } = useLiff()
+// Keep fallback counts reactive without changing the shared fixture data.
+const localSeedEvents = ref<EventItem[]>(eventSeed.map((event) => ({ ...event, park: { ...event.park } })))
+
+async function syncPersonalCloudState() {
+  const personal = await fetchMyCloudState()
+  state.registered = [...personal.registrationIds]
+  state.favorites = [...personal.favoriteIds]
+  state.createdEvents = personal.organizerEvents
+}
 
 async function syncWithCloud() {
   try {
-    const [remoteEvents, remoteRegistrations, remoteFavorites] = await Promise.all([
-      fetchEventsFromSupabase(),
-      fetchMyRegistrations(),
-      fetchMyFavorites(),
-    ])
-
-    if (remoteEvents.length > 0) {
-      cloudEvents.value = remoteEvents
-      isCloudLoaded.value = true
-    }
-
-    if (remoteRegistrations.length > 0) {
-      const merged = new Set([...state.registered, ...remoteRegistrations])
-      state.registered = Array.from(merged)
-    }
-
-    if (remoteFavorites.length > 0) {
-      const merged = new Set([...state.favorites, ...remoteFavorites])
-      state.favorites = Array.from(merged)
-    }
+    const remoteEvents = await fetchEventsFromSupabase()
+    cloudEvents.value = remoteEvents
+    isCloudLoaded.value = true
   } catch (err) {
     console.warn('Sync with Supabase cloud encountered an issue:', err)
   }
-}
 
-// 立即觸發雲端初始化同步
-syncWithCloud()
+  if (liffState.profile) {
+    try {
+      await syncPersonalCloudState()
+    } catch (err) {
+      console.warn('Personal cloud sync encountered an issue:', err)
+    }
+  }
+}
 
 function hydrateState() {
   if (typeof window === 'undefined') return
   try {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<StoredState> | null
     if (!stored) return
-    if (Array.isArray(stored.favorites)) state.favorites = stored.favorites.filter((id): id is string => typeof id === 'string')
-    if (Array.isArray(stored.registered)) state.registered = stored.registered.filter((id): id is string => typeof id === 'string')
-    if (Array.isArray(stored.createdEvents)) state.createdEvents = stored.createdEvents as EventItem[]
     if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
     if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
     if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
@@ -102,24 +98,41 @@ function hydrateState() {
 }
 
 hydrateState()
+syncWithCloud()
 
-const activeEvents = computed(() => {
-  if (cloudEvents.value.length > 0) {
-    // 當有雲端活動時，同時確保使用者本地建立的暫存活動也在清單中
-    const remoteIds = new Set(cloudEvents.value.map((e) => e.id))
-    const localNew = state.createdEvents.filter((e) => !remoteIds.has(e.id))
-    return [...localNew, ...cloudEvents.value]
+watch(() => liffState.profile?.userId, async (userId) => {
+  if (!userId) {
+    state.favorites = []
+    state.registered = []
+    state.createdEvents = []
+    return
   }
-  return [...state.createdEvents, ...eventSeed]
+
+  try {
+    await syncPersonalCloudState()
+  } catch (err) {
+    console.warn('Verified LINE session sync failed:', err)
+  }
 })
 
+const sourceEvents = computed(() => {
+  if (isCloudLoaded.value) {
+    // 當有雲端活動時，同時確保使用者本地建立的暫存活動也在清單中
+    const remoteIds = new Set(cloudEvents.value.map((e) => e.id))
+    const localNew = state.createdEvents.filter((e) => !remoteIds.has(e.id) && (!e.status || e.status === 'active' || e.status === 'full'))
+    return [...localNew, ...cloudEvents.value]
+  }
+  return [...state.createdEvents, ...localSeedEvents.value]
+})
+
+const activeEvents = computed(() => sourceEvents.value.map((event) => ({
+  ...event, dateKey: eventDateKey(event.isoDate), dateLabel: formatEventDate(event.isoDate),
+})))
+
 function eventMatchesDate(event: EventItem, dateFilter: DateFilter, customDate: string | null) {
-  if (dateFilter === 'week') return true
-  if (dateFilter === 'custom') return Boolean(customDate && event.isoDate === customDate)
-  return event.dateKey === dateFilter
+  return matchesEventDate(event, dateFilter, customDate)
 }
 
-import { useLiff } from '@/services/liffService'
 import {
   checkInParticipantInSupabase,
   fetchEventParticipants,
@@ -128,8 +141,6 @@ import {
 } from '@/services/registrationService'
 
 export function useAppState() {
-  const { liffState } = useLiff()
-
   const visibleEvents = computed(() => activeEvents.value.filter((event) => {
     const dateMatch = eventMatchesDate(event, state.dateFilter, state.customDate)
     const interestMatch = state.interest === '全部' || event.type === state.interest
@@ -143,15 +154,17 @@ export function useAppState() {
     return activeEvents.value.find((event) => event.id === id)
   }
 
-  function toggleFavorite(id: string) {
-    const liffUser = liffState.profile
+  async function toggleFavorite(id: string) {
     const index = state.favorites.indexOf(id)
     if (index >= 0) {
       state.favorites.splice(index, 1)
-      removeFavoriteInSupabase(id, liffUser?.userId || 'user-me')
+      if (!await removeFavoriteInSupabase(id)) state.favorites.splice(index, 0, id)
     } else {
       state.favorites.push(id)
-      addFavoriteInSupabase(id, liffUser?.userId || 'user-me')
+      if (!await addFavoriteInSupabase(id)) {
+        const addedIndex = state.favorites.indexOf(id)
+        if (addedIndex >= 0) state.favorites.splice(addedIndex, 1)
+      }
     }
   }
 
@@ -181,12 +194,9 @@ export function useAppState() {
    * 探索參加者：報名活動 (原子鎖定名額扣減 + 樂觀更新)
    */
   async function registerEvent(id: string, participantName?: string): Promise<{ success: boolean; message: string }> {
-    const liffUser = liffState.profile
-    const userId = liffUser?.userId || 'user-me'
-    const userName = participantName || liffUser?.displayName || '林淑芬'
-    const userAvatar = liffUser?.pictureUrl || undefined
+    void participantName
 
-    const targetEvent = getEvent(id)
+    const targetEvent = sourceEvents.value.find((event) => event.id === id)
     if (targetEvent && targetEvent.spots <= 0) {
       return { success: false, message: '很抱歉，此活動名額已額滿！' }
     }
@@ -200,30 +210,29 @@ export function useAppState() {
       }
     }
 
-    const res = await registerEventInSupabase(id, userId, userName, userAvatar)
+    const res = await registerEventInSupabase(id)
     if (!res.success) {
       // 伺服器拒絕時回滾前端狀態
       const idx = state.registered.indexOf(id)
       if (idx >= 0 && !wasRegistered) {
         state.registered.splice(idx, 1)
       }
-      if (targetEvent) {
+      if (targetEvent && !wasRegistered) {
         targetEvent.spots += 1
       }
       return res
     }
 
-    return { success: true, message: '報名成功！' }
+    if (targetEvent && typeof res.spots === 'number') targetEvent.spots = res.spots
+
+    return { success: true, message: res.message || '報名成功！' }
   }
 
   /**
    * 探索參加者：取消報名 (原子回補名額 + 樂觀更新)
    */
   async function unregisterEvent(id: string): Promise<{ success: boolean; message: string }> {
-    const liffUser = liffState.profile
-    const userId = liffUser?.userId || 'user-me'
-
-    const targetEvent = getEvent(id)
+    const targetEvent = sourceEvents.value.find((event) => event.id === id)
     const idx = state.registered.indexOf(id)
     if (idx >= 0) {
       state.registered.splice(idx, 1)
@@ -232,43 +241,46 @@ export function useAppState() {
       }
     }
 
-    const res = await unregisterEventInSupabase(id, userId)
+    const res = await unregisterEventInSupabase(id)
     if (!res.success) {
       // 回滾
       if (idx >= 0 && !state.registered.includes(id)) {
         state.registered.push(id)
       }
-      if (targetEvent) {
+      if (targetEvent && idx >= 0) {
         targetEvent.spots = Math.max(0, targetEvent.spots - 1)
       }
       return res
     }
 
-    return { success: true, message: '已取消報名，名額已釋出。' }
+    if (targetEvent && typeof res.spots === 'number') targetEvent.spots = res.spots
+
+    return { success: true, message: res.message || '已取消報名，名額已釋出。' }
   }
 
   /**
    * 活動發起人：發布新活動
    */
-  function createEvent(input: Omit<EventItem, 'id' | 'organizer'>) {
+  async function createEvent(input: Omit<EventItem, 'id' | 'organizer'>, id = `created-${crypto.randomUUID()}`) {
     const liffUser = liffState.profile
     const created: EventItem = {
       ...input,
-      id: `created-${Date.now()}`,
+      id,
       organizer: {
-        name: liffUser?.displayName || '我',
+        id: liffUser?.userId,
+        name: liffUser?.displayName || 'LINE 使用者',
         role: '活動發起人',
         rating: '5.0',
         organized: 1,
-        verified: true,
+        verified: false,
       },
     }
-    state.createdEvents.unshift(created)
-    if (cloudEvents.value.length > 0) {
-      cloudEvents.value.unshift(created)
-    }
-    createEventInSupabase(created)
-    return created
+    const saved = await createEventInSupabase(created)
+    if (!state.createdEvents.some((event) => event.id === saved.id)) state.createdEvents.unshift(saved)
+    const index = cloudEvents.value.findIndex((event) => event.id === saved.id)
+    if (index >= 0) cloudEvents.value[index] = saved
+    else if (isCloudLoaded.value) cloudEvents.value.unshift(saved)
+    return saved
   }
 
   /**
@@ -327,9 +339,6 @@ export function useOnboarding() {
 
 watch(state, (value) => {
   if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    favorites: value.favorites,
-    registered: value.registered,
-    createdEvents: value.createdEvents,
     dateFilter: value.dateFilter,
     interest: value.interest,
     customDate: value.customDate,
