@@ -29,15 +29,19 @@ import { parks, type EventItem } from '@/data/events'
 type SubView = 'activities' | 'favorites' | 'parks' | 'notifications' | 'settings'
 type ActivityTab = '即將開始' | '已報名' | '我發起的' | '已結束'
 
-const router = useRouter()
+import CalendarChoiceDialog from '@/components/CalendarChoiceDialog.vue'
 import { shareActivityToLine } from '@/services/liffService'
+import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
+const router = useRouter()
 const { state, favoriteEvents, registeredEvents, toggleFavorite, liffProfile } = useAppState()
 
 const currentSubView = shallowRef<SubView | null>(null)
 const currentActivityTab = shallowRef<ActivityTab>('即將開始')
 const toastMessage = shallowRef('')
 const expandedNotification = shallowRef<string | null>(null)
+const showCalendarDialog = shallowRef(false)
+const selectedCalendarEvent = shallowRef<EventItem | null>(null)
 
 // 預設展開第一張活動通知
 if (registeredEvents.value.length > 0) {
@@ -86,7 +90,21 @@ function toggleNotificationExpand(id: string) {
 }
 
 function addToCalendar(event?: EventItem) {
-  showToast(`已將${event ? `「${event.title}」` : '活動'}加入您的行事曆`)
+  selectedCalendarEvent.value = event || todayEvent.value || registeredEvents.value[0] || null
+  if (selectedCalendarEvent.value) {
+    showCalendarDialog.value = true
+  }
+}
+
+function onCalendarAdded(type: 'google' | 'apple') {
+  showToast(type === 'google' ? '已為您開啟 Google 日曆！' : '已下載行事曆檔，請確認加入手機日曆！')
+}
+
+function navigateToMeeting(event?: EventItem) {
+  const ev = event || todayEvent.value || registeredEvents.value[0]
+  if (!ev) return
+  const p = ev.park
+  openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
 }
 
 function openEvent(event: EventItem) {
@@ -159,8 +177,10 @@ function saveSettings() {
             <button class="timeline-card" type="button" @click="todayEvent ? openEvent(todayEvent) : router.push('/activity/morning-walk')">
               <h3>{{ todayEvent ? todayEvent.title : '樂齡晨間健走' }}</h3>
               <p>{{ todayEvent ? todayEvent.park.name + '・' + todayEvent.park.meeting : '大安森林公園・2 號出口旁廣場' }}</p>
-              <div style="margin-top: 4px;">
+              <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
                 <span class="tag tag--success">已報名</span>
+                <span class="tag tag--info" style="cursor: pointer; background: #e0f2fe; color: #0369a1;" @click.stop="navigateToMeeting(todayEvent || undefined)">🧭 導航至集合點</span>
+                <span class="tag tag--info" style="cursor: pointer; background: #dcfce7; color: #15803d;" @click.stop="addToCalendar(todayEvent || undefined)">📅 加入日曆</span>
               </div>
             </button>
           </div>
@@ -413,9 +433,12 @@ function saveSettings() {
                 </div>
               </div>
 
-              <div class="notification-action-row">
+              <div class="notification-action-row" style="display: flex; flex-wrap: wrap; gap: 8px;">
                 <button class="button button--primary button--small" type="button" @click="router.push(`/activity/${event.id}`)">
                   查看活動詳情 <span aria-hidden="true">→</span>
+                </button>
+                <button class="button button--secondary button--small" type="button" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;" @click="navigateToMeeting(event)">
+                  🧭 集合點導航
                 </button>
                 <button class="button button--secondary button--small" type="button" @click="addToCalendar(event)">
                   <CalendarDays :size="16" aria-hidden="true" />
@@ -473,16 +496,20 @@ function saveSettings() {
                 </div>
               </div>
 
-              <div class="notification-action-row">
+              <div class="notification-action-row" style="display: flex; flex-wrap: wrap; gap: 8px;">
                 <button class="button button--primary button--small" type="button" @click="currentSubView = 'activities'">
                   查看我的行程 <span aria-hidden="true">→</span>
+                </button>
+                <button class="button button--secondary button--small" type="button" style="background: #e0f2fe; color: #0369a1; border-color: #bae6fd;" @click="navigateToMeeting(event)">
+                  🧭 集合點導航
+                </button>
+                <button class="button button--secondary button--small" type="button" @click="addToCalendar(event)">
+                  <CalendarDays :size="16" aria-hidden="true" />
+                  加入行事曆
                 </button>
                 <button class="button button--secondary button--small" type="button" @click="shareEvent(event)">
                   <MessageCircle :size="16" aria-hidden="true" />
                   LINE 邀請朋友
-                </button>
-                <button class="button button--secondary button--small" type="button" @click="router.push(`/activity/${event.id}`)">
-                  活動詳情
                 </button>
               </div>
             </div>
@@ -548,6 +575,14 @@ function saveSettings() {
         <button class="button button--primary button--full" type="submit">儲存設定</button>
       </form>
     </main>
+
+    <!-- 行事曆選擇彈窗 -->
+    <CalendarChoiceDialog
+      :show="showCalendarDialog"
+      :event="selectedCalendarEvent"
+      @close="showCalendarDialog = false"
+      @added="onCalendarAdded"
+    />
 
     <!-- Toast 提示訊息 -->
     <div v-if="toastMessage" class="toast show" role="status" aria-live="polite">

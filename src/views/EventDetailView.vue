@@ -11,16 +11,17 @@ import {
 } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import CalendarChoiceDialog from '@/components/CalendarChoiceDialog.vue'
 import GoogleMapView from '@/components/GoogleMapView.vue'
 import { useAppState } from '@/composables/useAppState'
-import { openGoogleMapsDirections } from '@/utils/mapUtils'
-
 import { shareActivityToLine } from '@/services/liffService'
+import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const route = useRoute()
 const router = useRouter()
 const { getEvent, state } = useAppState()
 const statusMessage = shallowRef('')
+const showCalendarDialog = shallowRef(false)
 const event = computed(() => getEvent(String(route.params.id)))
 const isRegistered = computed(() => Boolean(event.value && state.registered.includes(event.value.id)))
 
@@ -32,6 +33,14 @@ function navigateToMeetingPoint() {
   if (!event.value) return
   const p = event.value.park
   openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
+}
+
+function addToCalendar() {
+  showCalendarDialog.value = true
+}
+
+function onCalendarAdded(type: 'google' | 'apple') {
+  statusMessage.value = type === 'google' ? '已為您開啟 Google 日曆！' : '已下載行事曆檔，請確認加入！'
 }
 
 async function share() {
@@ -62,9 +71,19 @@ async function share() {
         </div>
 
         <!-- 已報名提示區塊 -->
-        <aside v-if="isRegistered" class="notice notice--success" style="background: rgba(220, 252, 231, 0.9); border: 1px solid #86efac; color: #166534; padding: 12px 14px; border-radius: 14px; display: flex; align-items: center; gap: 8px; margin: 12px 0;">
-          <CheckCircle2 :size="20" style="color: #15803d; flex: 0 0 auto;" />
-          <span style="font-size: 0.9rem; font-weight: 800;">你已成功報名此活動，可在「我的」查看行程。</span>
+        <aside v-if="isRegistered" class="notice notice--success" style="background: rgba(220, 252, 231, 0.9); border: 1px solid #86efac; color: #166534; padding: 14px 16px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px; margin: 12px 0;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <CheckCircle2 :size="20" style="color: #15803d; flex: 0 0 auto;" />
+            <span style="font-size: 0.95rem; font-weight: 800;">你已成功報名此活動，可在「我的」查看行程。</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <button class="button button--secondary" type="button" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 999px; background: #fff;" @click="addToCalendar">
+              📅 加入行事曆
+            </button>
+            <button class="button button--secondary" type="button" style="padding: 6px 12px; font-size: 0.85rem; border-radius: 999px; background: #fff;" @click="navigateToMeetingPoint">
+              🧭 集合點導航
+            </button>
+          </div>
         </aside>
 
         <div class="detail-facts">
@@ -137,6 +156,15 @@ async function share() {
         </button>
       </template>
     </div>
+
+    <!-- 行事曆彈窗 -->
+    <CalendarChoiceDialog
+      :show="showCalendarDialog"
+      :event="event"
+      @close="showCalendarDialog = false"
+      @added="onCalendarAdded"
+    />
+
     <p class="sr-only" role="status" aria-live="polite">{{ statusMessage }}</p>
   </div>
   <div v-else class="empty-state page-empty"><h1>找不到這場活動</h1><RouterLink class="button button--primary" to="/explore">回到探索</RouterLink></div>

@@ -7,19 +7,22 @@ import {
   Clock3,
   MapPin,
   MessageCircle,
+  Navigation,
   UsersRound,
 } from 'lucide-vue-next'
 import { computed, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import CalendarChoiceDialog from '@/components/CalendarChoiceDialog.vue'
 import { useAppState } from '@/composables/useAppState'
+import { shareActivityToLine } from '@/services/liffService'
+import { openGoogleMapsDirections } from '@/utils/mapUtils'
 
 const route = useRoute()
 const router = useRouter()
 const { getEvent } = useAppState()
 const event = computed(() => getEvent(String(route.params.id)))
 const toastMessage = shallowRef('')
-
-import { shareActivityToLine } from '@/services/liffService'
+const showCalendarDialog = shallowRef(false)
 
 function showToast(msg: string) {
   toastMessage.value = msg
@@ -29,7 +32,17 @@ function showToast(msg: string) {
 }
 
 function addToCalendar() {
-  showToast('已將活動加入您的行事曆')
+  showCalendarDialog.value = true
+}
+
+function onCalendarAdded(type: 'google' | 'apple') {
+  showToast(type === 'google' ? '已為您開啟 Google 日曆！' : '已下載行事曆檔，請確認加入手機日曆！')
+}
+
+function navigateToMeeting() {
+  if (!event.value) return
+  const p = event.value.park
+  openGoogleMapsDirections(`${p.name} ${p.meeting}`, p.lat && p.lng ? { lat: p.lat, lng: p.lng } : undefined)
 }
 
 async function inviteFriends() {
@@ -112,33 +125,47 @@ async function inviteFriends() {
       </button>
       <p class="success-view__note">報名紀錄已放在「我的活動」</p>
 
-      <!-- 也可以：加入行事曆 / LINE 邀請朋友 -->
+      <!-- 也可以：加入行事曆 / 集合點導航 / LINE 邀請朋友 -->
       <section class="section" style="margin-top: 24px; text-align: left; width: 100%;">
         <div class="section-heading">
           <div>
-            <h2>也可以</h2>
-            <p>把活動記下來或邀請朋友</p>
+            <h2>出門與提醒</h2>
+            <p>把活動記下來或開啟導航</p>
           </div>
         </div>
         <div class="action-list">
+          <!-- 1. 加入行事曆 -->
           <button class="action-card" type="button" @click="addToCalendar">
-            <span class="action-icon">
+            <span class="action-icon" style="background: #e0f2fe; color: #0284c7;">
               <CalendarDays :size="24" aria-hidden="true" />
             </span>
             <span class="action-text">
-              <strong>加入行事曆</strong>
-              <span class="action-sub">把日期與集合地點記下來</span>
+              <strong>加入我的行事曆</strong>
+              <span class="action-sub">支援 Google 日曆與 Apple / 手機日曆</span>
             </span>
             <ChevronRight :size="20" class="chevron" aria-hidden="true" />
           </button>
 
+          <!-- 2. 集合點出發導航 -->
+          <button class="action-card" type="button" @click="navigateToMeeting">
+            <span class="action-icon" style="background: #dcfce7; color: #15803d;">
+              <Navigation :size="24" aria-hidden="true" />
+            </span>
+            <span class="action-text">
+              <strong>前往集合點導航</strong>
+              <span class="action-sub">{{ event.park.name }}・{{ event.park.meeting }}</span>
+            </span>
+            <ChevronRight :size="20" class="chevron" aria-hidden="true" />
+          </button>
+
+          <!-- 3. LINE 邀請朋友 -->
           <button class="action-card" type="button" @click="inviteFriends">
-            <span class="action-icon">
+            <span class="action-icon" style="background: #f0fdf4; color: #16a34a;">
               <MessageCircle :size="24" aria-hidden="true" />
             </span>
             <span class="action-text">
               <strong>LINE 邀請朋友</strong>
-              <span class="action-sub">把活動資訊分享給朋友</span>
+              <span class="action-sub">將活動資訊分享到 LINE 聊天室</span>
             </span>
             <ChevronRight :size="20" class="chevron" aria-hidden="true" />
           </button>
@@ -151,6 +178,14 @@ async function inviteFriends() {
         </button>
       </section>
     </main>
+
+    <!-- 行事曆選擇彈窗 -->
+    <CalendarChoiceDialog
+      :show="showCalendarDialog"
+      :event="event"
+      @close="showCalendarDialog = false"
+      @added="onCalendarAdded"
+    />
 
     <div v-if="toastMessage" class="toast show" role="status" aria-live="polite">
       {{ toastMessage }}
