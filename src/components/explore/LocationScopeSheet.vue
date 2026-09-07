@@ -3,16 +3,14 @@ import { ArrowLeft, Check, Loader2, LocateFixed, MapPin, Search, Sparkles, X } f
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
+import {
+  findLocalPlaceSuggestions,
+  mergePlaceSuggestions,
+  requestLegacyGooglePredictions,
+  searchTaiwanPlacesLive,
+  type PlaceSuggestion,
+} from '@/services/placeSearchService'
 import type { ExploreRadius, ExploreScope } from '@/types/explore'
-
-interface PlaceSuggestion {
-  placeId: string
-  mainText: string
-  secondaryText: string
-  fullText: string
-  lat?: number
-  lng?: number
-}
 
 const props = defineProps<{
   open: boolean
@@ -51,6 +49,7 @@ let autocompleteService: any = null
 let placesService: any = null
 let sessionToken: any = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let activeSearchId = 0
 
 function syncDraft() {
   Object.assign(draft, props.scope)
@@ -86,7 +85,7 @@ async function loadGoogleMapsSDK(): Promise<boolean> {
   if (!window.__googleMapsLoadingPromise) {
     window.__googleMapsLoadingPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey.value}&libraries=places,marker&language=zh-TW&region=TW&v=weekly`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey.value}&libraries=places,marker&language=zh-TW&region=TW&v=weekly&loading=async`
       script.async = true
       script.defer = true
       script.onload = () => resolve()
@@ -120,113 +119,45 @@ async function initPlacesServices(): Promise<boolean> {
   return true
 }
 
-/**
- * 全台灣即時地理位置連線搜尋（覆蓋全台 368 鄉鎮市區所有公園、綠地、地標與景點）
- */
-async function searchTaiwanPlacesLive(text: string): Promise<PlaceSuggestion[]> {
-  try {
-    const encoded = encodeURIComponent(text)
-    const res = await fetch(`https://photon.komoot.io/api/?q=${encoded}&limit=15&lat=23.7&lon=120.9&lang=default`)
-    if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data?.features) && data.features.length > 0) {
-        return data.features
-          .filter((f: any) => f.properties?.name)
-          .map((f: any, idx: number) => {
-            const props = f.properties
-            const city = props.city || props.county || props.state || ''
-            const district = props.district || props.suburb || props.town || ''
-            const street = props.street || ''
-            const fullAddress = [city, district, street].filter(Boolean).join('') || '台灣'
-            return {
-              placeId: `live-photon-${idx}-${props.osm_id || Date.now()}`,
-              mainText: props.name,
-              secondaryText: fullAddress,
-              fullText: `${fullAddress} ${props.name}`,
-              lat: f.geometry?.coordinates?.[1],
-              lng: f.geometry?.coordinates?.[0],
-            }
-          })
-      }
-    }
-  } catch (err) {
-    console.warn('即時地點連線搜尋失敗:', err)
-  }
-
-  try {
-    const encoded = encodeURIComponent(text)
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=tw&addressdetails=1&limit=12`)
-    if (res.ok) {
-      const list = await res.json()
-      if (Array.isArray(list) && list.length > 0) {
-        return list.map((item: any) => {
-          const addr = item.address || {}
-          const city = addr.city || addr.county || ''
-          const sub = addr.suburb || addr.district || addr.town || addr.village || ''
-          const road = addr.road || ''
-          const fullAddress = [city, sub, road].filter(Boolean).join('') || item.display_name
-          return {
-            placeId: `live-osm-${item.place_id}`,
-            mainText: item.name || (item.display_name ? item.display_name.split(',')[0] : text),
-            secondaryText: fullAddress,
-            fullText: item.display_name,
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lon),
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.warn('Nominatim 即時搜尋失敗:', err)
-  }
-
-  return []
-}
-
 async function fetchOverlaySuggestions(val: string) {
   const text = val.trim()
+  const searchId = ++activeSearchId
   if (!text) {
     overlaySuggestions.value = []
     isSearchingPlaces.value = false
     return
   }
 
+  const localSuggestions = findLocalPlaceSuggestions(props.parks, text)
+  overlaySuggestions.value = localSuggestions
   isSearchingPlaces.value = true
 
-  const isReady = await initPlacesServices()
+  try {
+    const isReady = await initPlacesServices()
+    if (searchId !== activeSearchId) return
 
-  // 1. 若 Google Places SDK 就緒，透過 Google Places API 搜尋全台
-  if (isReady && autocompleteService) {
-    const request = {
-      input: text,
-      componentRestrictions: { country: 'tw' },
-      sessionToken,
-      language: 'zh-TW',
+    let remoteSuggestions: PlaceSuggestion[] = []
+    if (isReady && autocompleteService) {
+      remoteSuggestions = await requestLegacyGooglePredictions(
+        autocompleteService,
+        {
+          input: text,
+          componentRestrictions: { country: 'tw' },
+          sessionToken,
+          language: 'zh-TW',
+        },
+        window.google.maps.places.PlacesServiceStatus.OK,
+      )
     }
 
-    autocompleteService.getPlacePredictions(request, async (predictions: any, status: any) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
-        isSearchingPlaces.value = false
-        overlaySuggestions.value = predictions.map((p: any) => ({
-          placeId: p.place_id,
-          mainText: p.structured_formatting?.main_text || p.description,
-          secondaryText: p.structured_formatting?.secondary_text || '',
-          fullText: p.description,
-        }))
-      } else {
-        // 若 Google Places 無精確回傳，連線全台即時地理搜尋引擎
-        const liveResults = await searchTaiwanPlacesLive(text)
-        isSearchingPlaces.value = false
-        overlaySuggestions.value = liveResults
-      }
-    })
-    return
-  }
+    if (searchId !== activeSearchId) return
+    if (!remoteSuggestions.length) remoteSuggestions = await searchTaiwanPlacesLive(text)
+    if (searchId !== activeSearchId) return
 
-  // 2. 若 Google Places SDK 尚未載入，直接連線全台即時地理搜尋引擎
-  const liveResults = await searchTaiwanPlacesLive(text)
-  isSearchingPlaces.value = false
-  overlaySuggestions.value = liveResults
+    overlaySuggestions.value = mergePlaceSuggestions(remoteSuggestions, localSuggestions)
+  } finally {
+    if (searchId === activeSearchId) isSearchingPlaces.value = false
+  }
 }
 
 function handleOverlayInput(e: Event) {
@@ -308,9 +239,12 @@ async function openDedicatedSearch() {
 }
 
 function closeDedicatedSearch() {
+  activeSearchId += 1
+  if (debounceTimer) clearTimeout(debounceTimer)
   isDedicatedSearchOpen.value = false
   overlayQuery.value = ''
   overlaySuggestions.value = []
+  isSearchingPlaces.value = false
 }
 
 function selectGpsAndClose() {
@@ -467,6 +401,8 @@ watch(() => props.open, async (isOpen) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  activeSearchId += 1
+  if (debounceTimer) clearTimeout(debounceTimer)
   document.body.style.overflow = previousBodyOverflow
 })
 </script>
@@ -664,15 +600,11 @@ onBeforeUnmount(() => {
 
         <!-- 即時搜尋結果捲動清單 (100% 滿版無阻礙) -->
         <div class="search-overlay-results">
-          <div v-if="isSearchingPlaces" class="search-overlay-status">
-            <Loader2 :size="20" class="animate-spin" aria-hidden="true" />
-            <span>正在連線 Google 地圖搜尋全台...</span>
-          </div>
-
-          <div v-else-if="overlaySuggestions.length > 0" class="search-overlay-list">
+          <div v-if="overlaySuggestions.length > 0" class="search-overlay-list">
             <div class="search-overlay-list-header">
-              <Sparkles :size="14" aria-hidden="true" />
-              <span>Google 地圖即時推薦</span>
+              <Loader2 v-if="isSearchingPlaces" :size="14" class="animate-spin" aria-hidden="true" />
+              <Sparkles v-else :size="14" aria-hidden="true" />
+              <span>{{ isSearchingPlaces ? '正在補充更多地點…' : '地點搜尋結果' }}</span>
             </div>
             <button
               v-for="item in overlaySuggestions"
@@ -689,6 +621,11 @@ onBeforeUnmount(() => {
                 <span>{{ item.secondaryText || item.fullText }}</span>
               </div>
             </button>
+          </div>
+
+          <div v-else-if="isSearchingPlaces" class="search-overlay-status">
+            <Loader2 :size="20" class="animate-spin" aria-hidden="true" />
+            <span>正在搜尋全台地點...</span>
           </div>
 
           <div v-else-if="overlayQuery.trim()" class="search-overlay-empty">
