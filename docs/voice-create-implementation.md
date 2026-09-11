@@ -44,7 +44,8 @@
 
 - Supabase migration：`20260911111605_voice_activity_drafts_and_images`，已套用。
 - Edge Functions：`line-api` v3、`voice-draft` v1，狀態 ACTIVE。
-- 前端：準備預覽部署；正式站仍為原版本，須通過前端部署檢查後更新。
+- 前端候選版本：`a78b9cf`，Vercel 預覽部署 `9CeYU1PihLdmocgy75qdk1pEAwqf` 已 Ready。雲端頁面與圖片正常、麥克風按鈕 88px、無橫向溢出或主控台錯誤；依下列順序從 main 發布至正式網址。
+- 雲端 HTTP 邊界檢查：語音預檢 OPTIONS 為 204；語音與一般 API 的未登入／假憑證均為 401；語音不允許來源為 403。
 - 安全顧問的「RLS 已啟用但沒有 policy」提示對私人收藏／報名／用量表是刻意的拒絕直接存取設計，僅由驗證 LINE 身分的伺服器處理。
 
 ## 專案擁有者先完成的設定
@@ -59,8 +60,9 @@
 2. 審核並套用上述加法式 migration，再執行 SQL 回歸測試；測試以交易回滾結束。
 3. 部署新版 `line-api` 與 `voice-draft`。兩者自行驗證 LINE token，不以關閉平台 JWT 驗證作為匿名授權。
 4. 先驗證未登入拒絕、跨使用者圖片路徑拒絕、費用／時間限制、每日配額、上傳成功與失敗、建立重試不重複。
-5. 在可回復的預覽部署完成真實 LINE 登入 → 語音 → 確認地點 → 編輯 → 建立端到端測試後，再更新正式 Vercel 網站。
-6. iOS Safari、Android Chrome 與 LINE 內建瀏覽器實機檢查：拒絕權限、背景中斷、慢網路、逾時重試、草稿恢復、底部鍵盤與導覽列遮擋。
+5. 保留已通過檢查的 Git 候選分支與上一版 main `29f744d`，以 fast-forward 更新 main 觸發正式 Vercel 部署；確認 Vercel Ready 與正式 `/create` 頁面的新版入口。若失敗，保持或回復上一版前端；新增資料欄位不刪除。
+6. 請專案擁有者在正式 LIFF 網址實機測試 LINE 登入 → 語音 → 確認地點 → 編輯 → 建立。代理未啟用使用者的麥克風，也未擷取瀏覽器登入憑證，不能將模擬／未登入測試當成真實語音驗證。
+7. iOS Safari、Android Chrome 與 LINE 內建瀏覽器補充實機檢查：拒絕權限、背景中斷、慢網路、逾時重試、草稿恢復、底部鍵盤與導覽列遮擋。
 
 ## 官方依據
 
