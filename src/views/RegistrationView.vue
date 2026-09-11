@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import { ArrowLeft, CalendarDays, Clock3, MapPin } from 'lucide-vue-next'
 import { computed, onMounted, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -66,7 +67,7 @@ async function confirmRegistration() {
           <div><dt>時間</dt><dd><Clock3 :size="18" aria-hidden="true" />{{ event.time }}</dd></div>
           <div><dt>地點</dt><dd><MapPin :size="18" aria-hidden="true" /><span>{{ event.park.name }}<small>{{ event.park.meeting }}</small></span></dd></div>
           <div><dt>剩餘名額</dt><dd>{{ event.spots > 0 ? `尚有 ${event.spots} 位` : '已額滿' }}</dd></div>
-          <div><dt>費用</dt><dd>{{ event.cost }}</dd></div>
+          <div><dt>費用</dt><dd>{{ formatEventCost(event) }}</dd></div>
           <div><dt>攜帶物品</dt><dd>{{ event.items }}</dd></div>
         </dl>
       </section>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import { CalendarDays, Clock3, Heart, MapPin, MessageCircle, Navigation, Share2, XCircle } from 'lucide-vue-next'
 import type { EventItem } from '@/data/events'
 
@@ -56,7 +57,7 @@ const emit = defineEmits<{
         <span><MapPin :size="18" aria-hidden="true" />{{ props.event.park.name }}</span>
       </div>
       <div class="tag-row">
-        <span class="tag tag--success">{{ props.event.cost }}</span>
+        <span class="tag tag--success">{{ formatEventCost(props.event) }}</span>
         <span class="tag">{{ props.event.audience }}</span>
       </div>
 
@@ -124,4 +125,3 @@ const emit = defineEmits<{
     </div>
   </article>
 </template>
-

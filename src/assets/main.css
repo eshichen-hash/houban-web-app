@@ -1035,8 +1035,8 @@ html { scroll-padding-top: 96px; }
 .compact-event-card__facts span { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .compact-event-card__facts span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compact-event-card__facts svg { flex: 0 0 auto; color: var(--ink); }
-.compact-event-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 10px; }
-.compact-event-card__footer .tag { min-height: 26px; padding: 3px 8px; font-size: .74rem; }
+.compact-event-card__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 10px; }
+.compact-event-card__footer .tag { max-width: 100%; min-height: 26px; padding: 3px 8px; font-size: .74rem; white-space: normal; }
 .compact-event-card__footer strong { color: var(--ink); font-size: .84rem; white-space: nowrap; }
 .result-section__footer { display: grid; justify-items: center; gap: 10px; margin-top: 22px; }
 .result-section__footer p { margin: 0; color: var(--ink-soft); font-size: .86rem; font-variant-numeric: tabular-nums; }
@@ -2071,6 +2071,5 @@ html { scroll-padding-top: 96px; }
     overflow-y: auto !important;
   }
 }
-
 
 

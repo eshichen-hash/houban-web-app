@@ -75,6 +75,7 @@ export interface EventItem {
   spots: number
   maxSpots: number
   cost: Cost
+  costAmount?: number | null
   audience: string
   description: string
   items: string

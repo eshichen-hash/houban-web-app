@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import {
   ArrowLeft,
   CalendarDays,
@@ -67,7 +68,7 @@ async function share() {
         <div class="tag-row">
           <span v-if="isRegistered" class="tag tag--success">✓ 已報名此活動</span>
           <span v-else class="tag tag--success">尚有 {{ event.spots }} 個名額</span>
-          <span class="tag">{{ event.cost }}</span>
+          <span class="tag">{{ formatEventCost(event) }}</span>
         </div>
 
         <!-- 已報名提示區塊 -->
@@ -114,7 +115,7 @@ async function share() {
           <p>{{ event.description }}</p>
           <dl>
             <div><dt>適合對象</dt><dd>{{ event.audience }}</dd></div>
-            <div><dt>費用</dt><dd>{{ event.cost }}</dd></div>
+            <div><dt>費用</dt><dd>{{ formatEventCost(event) }}</dd></div>
             <div><dt>攜帶物品</dt><dd>{{ event.items }}</dd></div>
           </dl>
         </section>
@@ -169,4 +170,3 @@ async function share() {
   </div>
   <div v-else class="empty-state page-empty"><h1>找不到這場活動</h1><RouterLink class="button button--primary" to="/explore">回到探索</RouterLink></div>
 </template>
-

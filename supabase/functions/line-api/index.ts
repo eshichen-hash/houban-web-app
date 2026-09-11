@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.115.0'
+import { imageOwnerFolder, normalizedCost, validateEventImage, validateNewSchedule } from '../_shared/eventRules.ts'
 
 const LINE_VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify'
 const LINE_CHANNEL_ID = Deno.env.get('LINE_LOGIN_CHANNEL_ID') || '2011461980'
@@ -97,6 +98,7 @@ function bearerToken(request: Request): string {
 async function verifyLineIdToken(idToken: string): Promise<LineIdentity> {
   const response = await fetch(LINE_VERIFY_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(8000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ id_token: idToken, client_id: LINE_CHANNEL_ID }),
   })
@@ -135,6 +137,9 @@ function normalizedCreateEvent(rawValue: unknown, identity: LineIdentity): Recor
   const spots = requireInteger(raw.spots, '剩餘名額', 0, maxSpots)
   const isoDate = requireText(raw.iso_date, '活動日期', 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new ApiError(400, 'INVALID_INPUT', '活動日期格式不正確。')
+  try { validateNewSchedule(isoDate, raw.time) } catch (error) { throw new ApiError(400, 'INVALID_INPUT', (error as Error).message) }
+  let cost: ReturnType<typeof normalizedCost>
+  try { cost = normalizedCost(raw.cost || '免費', raw.cost_amount) } catch (error) { throw new ApiError(400, 'INVALID_INPUT', (error as Error).message) }
 
   const optionalText = (value: unknown, maxLength = 1000) => {
     if (value === null || value === undefined || value === '') return null
@@ -152,15 +157,15 @@ function normalizedCreateEvent(rawValue: unknown, identity: LineIdentity): Recor
     date_label: requireText(raw.date_label, '日期標籤', 50),
     time: requireText(raw.time, '活動時間', 80),
     park_id: optionalText(raw.park_id, 128),
-    park_name: optionalText(raw.park_name, 150),
+    park_name: requireText(raw.park_name, '活動地點', 150),
     park_district: optionalText(raw.park_district, 100),
     park_address: optionalText(raw.park_address, 300),
-    park_meeting: optionalText(raw.park_meeting, 300),
+    park_meeting: requireText(raw.park_meeting, '集合地點', 300),
     park_lat: typeof raw.park_lat === 'number' && Number.isFinite(raw.park_lat) ? raw.park_lat : null,
     park_lng: typeof raw.park_lng === 'number' && Number.isFinite(raw.park_lng) ? raw.park_lng : null,
     spots,
     max_spots: maxSpots,
-    cost: optionalText(raw.cost, 20) || '免費',
+    ...cost,
     audience: optionalText(raw.audience, 1000),
     description: optionalText(raw.description, 5000),
     items: optionalText(raw.items, 2000),
@@ -194,6 +199,7 @@ function normalizedUpdates(rawValue: unknown): Record<string, unknown> {
   if ('park_lat' in raw) updates.park_lat = typeof raw.park_lat === 'number' && Number.isFinite(raw.park_lat) ? raw.park_lat : null
   if ('park_lng' in raw) updates.park_lng = typeof raw.park_lng === 'number' && Number.isFinite(raw.park_lng) ? raw.park_lng : null
   if ('max_spots' in raw) updates.max_spots = requireInteger(raw.max_spots, '活動名額', 3, 50)
+  if ('cost_amount' in raw) updates.cost_amount = requireInteger(raw.cost_amount, '每人費用', 0, 9999)
   if (!Object.keys(updates).length) throw new ApiError(400, 'INVALID_INPUT', '沒有可儲存的活動變更。')
   if (typeof updates.iso_date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(updates.iso_date)) {
     throw new ApiError(400, 'INVALID_INPUT', '活動日期格式不正確。')
@@ -203,6 +209,20 @@ function normalizedUpdates(rawValue: unknown): Record<string, unknown> {
 
 async function handleAction(origin: string, body: Record<string, unknown>, identity: LineIdentity, admin: SupabaseClient): Promise<Response> {
   const action = requireText(body.action, 'action', 50)
+
+  if (action === 'sign_event_image') {
+    requireInteger(body.bytes, '圖片大小', 1, 5 * 1024 * 1024)
+    if (body.mime !== 'image/webp') throw new ApiError(400, 'INVALID_IMAGE', '請先將圖片轉為 WebP。')
+    const owner = await imageOwnerFolder(identity.userId)
+    const quota = await admin.rpc('consume_creation_quota', { p_actor_hash: owner, p_kind: 'image' })
+    if (quota.error) throw new ApiError(503, 'IMAGE_UNAVAILABLE', '圖片服務暫時無法使用。')
+    if (!quota.data) throw new ApiError(429, 'IMAGE_DAILY_LIMIT', '今天的圖片上傳次數已達上限，可先使用系統配圖。')
+    const path = `${owner}/${crypto.randomUUID()}.webp`
+    const { data, error } = await admin.storage.from('event-images').createSignedUploadUrl(path)
+    if (error || !data) throw new ApiError(503, 'IMAGE_UPLOAD_FAILED', '圖片上傳尚未就緒，請稍後重試。')
+    const publicUrl = admin.storage.from('event-images').getPublicUrl(path).data.publicUrl
+    return success(origin, { path, token: data.token, publicUrl })
+  }
 
   if (action === 'session') {
     return success(origin, { user: { userId: identity.userId, displayName: identity.displayName, pictureUrl: identity.pictureUrl }, expiresAt: identity.expiresAt })
@@ -229,13 +249,16 @@ async function handleAction(origin: string, body: Record<string, unknown>, ident
   }
 
   if (action === 'create_event') {
-    const event = normalizedCreateEvent(body.event, identity)
-    const { data: existing, error: existingError } = await admin.from('events').select('*').eq('id', event.id).maybeSingle()
+    const raw = requireObject(body.event, '活動資料')
+    const eventId = requireEventId(raw.id)
+    const { data: existing, error: existingError } = await admin.from('events').select('*').eq('id', eventId).maybeSingle()
     if (existingError) throw new ApiError(500, 'DATABASE_ERROR', '活動儲存狀態確認失敗。')
     if (existing) {
       if (existing.organizer_id !== identity.userId) throw new ApiError(409, 'EVENT_ID_CONFLICT', '活動識別碼已被使用。')
       return success(origin, { event: existing, idempotent: true })
     }
+    const event = normalizedCreateEvent(raw, identity)
+    try { await validateEventImage(event.image, identity.userId, Deno.env.get('SUPABASE_URL')!) } catch (error) { throw new ApiError(400, 'INVALID_IMAGE', (error as Error).message) }
     const { data, error } = await admin.from('events').insert(event).select('*').single()
     if (error || !data) throw new ApiError(500, 'DATABASE_ERROR', '活動尚未完成儲存，請重試。')
     return success(origin, { event: data, idempotent: false }, 201)
@@ -245,6 +268,13 @@ async function handleAction(origin: string, body: Record<string, unknown>, ident
     const eventId = requireEventId(body.eventId)
     const existing = await requireOwnedEvent(admin, eventId, identity.userId)
     const updates = normalizedUpdates(body.updates)
+    const rawUpdates = requireObject(body.updates, '更新資料')
+    if ('cost' in updates || 'cost_amount' in rawUpdates) {
+      try { Object.assign(updates, normalizedCost(updates.cost ?? existing.cost, rawUpdates.cost_amount ?? existing.cost_amount)) } catch (error) { throw new ApiError(400, 'INVALID_INPUT', (error as Error).message) }
+    }
+    if ('image' in updates && updates.image !== existing.image) {
+      try { await validateEventImage(updates.image, identity.userId, Deno.env.get('SUPABASE_URL')!) } catch (error) { throw new ApiError(400, 'INVALID_IMAGE', (error as Error).message) }
+    }
     if (typeof updates.max_spots === 'number') {
       const { count, error: countError } = await admin.from('registrations').select('id', { count: 'exact', head: true }).eq('event_id', eventId).eq('status', 'confirmed')
       if (countError) throw new ApiError(500, 'DATABASE_ERROR', '活動名額確認失敗。')

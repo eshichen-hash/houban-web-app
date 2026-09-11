@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import {
   AlertCircle,
   AlertTriangle,
@@ -506,7 +507,7 @@ function saveSettings() {
                 <Check :size="18" />
                 <div>
                   <strong>費用與報到須知</strong>
-                  <p>費用：{{ event.cost }}。免出示票券，活動當天直接至集合點（{{ event.park.meeting }}）向發起人報到即可。</p>
+                  <p>費用：{{ formatEventCost(event) }}。免出示票券，活動當天直接至集合點（{{ event.park.meeting }}）向發起人報到即可。</p>
                 </div>
               </div>
 

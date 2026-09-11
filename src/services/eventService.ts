@@ -23,6 +23,7 @@ export interface EventRow {
   spots: number
   max_spots: number
   cost: string
+  cost_amount?: number | null
   audience: string | null
   description: string | null
   items: string | null
@@ -61,6 +62,7 @@ export function mapRowToEvent(row: EventRow): EventItem {
     spots: Number(row.spots ?? 6),
     maxSpots: Number(row.max_spots ?? 12),
     cost: (row.cost || '免費') as Cost,
+    costAmount: row.cost_amount ?? null,
     audience: row.audience || '一般長輩與社區居民',
     description: row.description || '',
     items: row.items || '自備飲用水',
@@ -98,6 +100,7 @@ export function mapEventToRow(event: EventItem, status: string = event.status ||
     spots: event.spots ?? 6,
     max_spots: event.maxSpots ?? 12,
     cost: event.cost || '免費',
+    cost_amount: event.cost === '免費' ? 0 : event.costAmount ?? null,
     audience: event.audience,
     description: event.description,
     items: event.items,

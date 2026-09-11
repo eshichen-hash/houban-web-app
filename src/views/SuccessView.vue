@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import {
   AlertTriangle,
   ArrowRight,
@@ -77,7 +78,7 @@ async function confirmCancelRegistration() {
             <h2 style="margin: 0 0 6px; font-size: 1.25rem; color: var(--ink); line-height: 1.35;">{{ event.title }}</h2>
             <div class="tag-row" style="display: flex; flex-wrap: wrap; gap: 6px;">
               <span class="tag tag--success">報名成功</span>
-              <span class="tag">{{ event.cost }}</span>
+              <span class="tag">{{ formatEventCost(event) }}</span>
             </div>
           </div>
         </div>
@@ -179,5 +180,4 @@ async function confirmCancelRegistration() {
     <RouterLink class="button button--primary" to="/explore">回到探索</RouterLink>
   </div>
 </template>
-
 

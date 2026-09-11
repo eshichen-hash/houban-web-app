@@ -7,3 +7,4 @@ dist/
 *.local
 Thumbs.db
 .DS_Store
+outputs/voice-create-qa/

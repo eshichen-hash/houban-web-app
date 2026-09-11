@@ -1,75 +1,90 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
-import { eventSeed } from '@/data/events'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
+import { effectScope } from 'vue'
 import CreateView from '@/views/CreateView.vue'
-import ParkAutocomplete from '@/components/ParkAutocomplete.vue'
+import VoiceCaptureCard from '@/components/create/voice/VoiceCaptureCard.vue'
+import ActivityDraftEditor from '@/components/create/voice/ActivityDraftEditor.vue'
+import DraftFieldSheet from '@/components/create/voice/DraftFieldSheet.vue'
+import { DRAFT_STORAGE_KEY, saveDraft, useVoiceActivityDraft } from '@/composables/useVoiceActivityDraft'
 
-const { createEvent, push } = vi.hoisted(() => ({ createEvent: vi.fn(), push: vi.fn() }))
+const { createEvent, push, processAudio } = vi.hoisted(() => ({ createEvent: vi.fn(), push: vi.fn(), processAudio: vi.fn() }))
 vi.mock('@/composables/useAppState', () => ({ useAppState: () => ({ createEvent }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+vi.mock('@/services/liffService', () => ({ initLiff: vi.fn().mockResolvedValue(undefined), requireVerifiedLineToken: vi.fn().mockResolvedValue('test-token'), useLiff: () => ({ liffState: { profile: null } }) }))
+vi.mock('@/services/voiceDraftService', () => ({ processActivityAudio: processAudio }))
+vi.mock('@/services/activityImageService', () => ({ activityPreset: () => '/activity-presets/walking.webp', uploadActivityImage: vi.fn() }))
 
 let wrapper: ReturnType<typeof mount>
-beforeEach(() => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-06T08:00:00+08:00'))
-  createEvent.mockReset(); push.mockReset()
-  wrapper = mount(CreateView, { attachTo: document.body, global: { stubs: { ParkAutocomplete: true, AdvancedActivitySettings: true } } })
-})
-afterEach(() => { wrapper.unmount(); document.body.innerHTML = ''; vi.useRealTimers() })
-
-async function fillForm() {
-  await wrapper.get('.activity-type-btn').trigger('click')
-  wrapper.findComponent(ParkAutocomplete).vm.$emit('select', { name: '測試公園', address: '台中市測試路', district: '台中市', placeId: 'test-park', lat: 24.1, lng: 120.6 })
+beforeEach(() => { localStorage.clear(); createEvent.mockReset(); push.mockReset(); processAudio.mockReset() })
+afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; localStorage.clear() })
+async function open(valid = false) {
+  if (valid) {
+    const scope = effectScope()
+    scope.run(() => {
+      const d = useVoiceActivityDraft()
+      Object.assign(d.form, { type: '健走', isoDate: '2099-09-12', time: '15:00', endTime: '16:00' })
+      d.confirmPark({ name: '測試公園', address: '台北市測試路', district: '台北市', placeId: 'test-park' })
+      d.form.meeting = '二號出口'; d.meetingConfirmed.value = true
+      saveDraft(localStorage, 'guest', d.snapshot())
+    })
+    scope.stop()
+  }
+  wrapper = mount(CreateView, { attachTo: document.body, global: { stubs: { DraftPlacePicker: true } } })
   await flushPromises()
+  if (valid) { await wrapper.findAll('button').find((b) => b.text() === '繼續草稿')!.trigger('click'); await flushPromises() }
 }
-
-describe('建立活動送出介面', () => {
-  it('未填寫時顯示可聚焦摘要與欄位錯誤，不呼叫儲存', async () => {
-    await wrapper.get('.create-submit').trigger('click')
+describe('語音優先的建立活動流程', () => {
+  it('正常入口只保留語音，不顯示舊三步驟與常駐文字入口', async () => {
+    await open()
+    expect(wrapper.text()).toContain('用說的，發起一場活動')
+    expect(wrapper.text()).not.toContain('第一步')
+    expect(wrapper.text()).not.toContain('改用文字輸入')
+    expect(wrapper.find('.create-submit').exists()).toBe(false)
+  })
+  it('麥克風無法使用後進入同一個空草稿，主操作引導第一個缺少欄位', async () => {
+    await open()
+    wrapper.findComponent(VoiceCaptureCard).vm.$emit('text')
+    await flushPromises()
+    wrapper.findComponent(ActivityDraftEditor).vm.$emit('submit')
     await flushPromises()
     expect(createEvent).not.toHaveBeenCalled()
-    expect(wrapper.get('[role="alert"]').text()).toContain('請確認以下欄位')
-    expect(document.activeElement).toBe(wrapper.get('[role="alert"]').element)
-    expect(wrapper.get('#create-type-error').text()).toContain('活動類型')
-    await wrapper.get('a[href="#create-type-choice"]').trigger('click')
-    expect(document.activeElement).toBe(wrapper.get('#create-type-choice').element)
+    const field = wrapper.findComponent(DraftFieldSheet)
+    expect(field.props('field')).toBe('type')
+    expect(document.body.textContent).toContain('請先選擇一種活動類型')
   })
-
-  it('等待真正儲存成功再跳轉，送出期间只呼叫一次', async () => {
-    await fillForm()
-    let finish!: (value: typeof eventSeed[number]) => void
+  it('等待真正成功才跳轉，連按不能重複儲存', async () => {
+    await open(true)
+    let finish!: (event: unknown) => void
     createEvent.mockReturnValue(new Promise((resolve) => { finish = resolve }))
-    await wrapper.get('.create-submit').trigger('click')
-    expect(wrapper.get('.create-submit').text()).toContain('正在儲存')
-    expect(wrapper.get('fieldset.create-fields').attributes('disabled')).toBeDefined()
-    await wrapper.get('.create-submit').trigger('click')
+    const editor = wrapper.findComponent(ActivityDraftEditor)
+    editor.vm.$emit('submit'); await flushPromises()
+    expect(editor.props('saving')).toBe(true)
+    editor.vm.$emit('submit'); await flushPromises()
     expect(createEvent).toHaveBeenCalledTimes(1)
     expect(push).not.toHaveBeenCalled()
-    finish(eventSeed[0]); await flushPromises()
+    finish({ title: '活動' }); await flushPromises()
     expect(push).toHaveBeenCalledWith('/manage')
+    expect(localStorage.getItem(DRAFT_STORAGE_KEY)).toBeNull()
   })
-
-  it('已修正表單放置到開始時間之後，仍會顯示新的欄位錯誤', async () => {
-    await wrapper.get('.create-submit').trigger('click')
-    await fillForm()
-    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
-    vi.setSystemTime(new Date('2026-09-06T10:00:00+08:00'))
-    await wrapper.get('.create-submit').trigger('click'); await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toContain('開始時間已過')
-    expect(wrapper.get('#create-start-time-error').text()).toContain('開始時間已過')
-    expect(createEvent).not.toHaveBeenCalled()
-  })
-
-  it('失敗保留表單，可使用相同 ID 重試', async () => {
-    await fillForm()
-    createEvent.mockRejectedValueOnce(new Error('網路異常，表單已保留'))
-    await wrapper.get('.create-submit').trigger('click'); await flushPromises()
+  it('儲存失敗保留資料、以同一 ID 重試，且不把圖片存成 Base64', async () => {
+    await open(true)
+    createEvent.mockRejectedValueOnce(new Error('網路異常，草稿已保留'))
+    wrapper.findComponent(ActivityDraftEditor).vm.$emit('submit'); await flushPromises()
+    expect(wrapper.text()).toContain('網路異常')
+    expect(localStorage.getItem(DRAFT_STORAGE_KEY)).toContain('二號出口')
     expect(push).not.toHaveBeenCalled()
-    expect(wrapper.get('[role="alert"]').text()).toContain('網路異常')
-    expect(wrapper.get('.selected-google-park-text').text()).toContain('測試公園')
-    expect(wrapper.get('.create-submit').text()).toContain('重試')
-    createEvent.mockResolvedValueOnce(eventSeed[0])
-    await wrapper.get('.create-submit').trigger('click'); await flushPromises()
+    createEvent.mockResolvedValueOnce({ title: '活動' })
+    wrapper.findComponent(ActivityDraftEditor).vm.$emit('submit'); await flushPromises()
     expect(createEvent.mock.calls[0][1]).toBe(createEvent.mock.calls[1][1])
-    expect(push).toHaveBeenCalledOnce()
+    expect(createEvent.mock.calls[0][0].image).toBe('/activity-presets/walking.webp')
+    expect(createEvent.mock.calls[0][0].costAmount).toBe(0)
+  })
+  it('底部面板只在確認後套用，取消不更動已辨識內容', async () => {
+    await open(true)
+    wrapper.findComponent(ActivityDraftEditor).vm.$emit('edit', 'spots'); await flushPromises()
+    const field = wrapper.findComponent(DraftFieldSheet)
+    await new DOMWrapper(document.querySelector('input[aria-label="活動名額"]')!).setValue(18)
+    field.vm.$emit('close'); await flushPromises()
+    expect(wrapper.findComponent(ActivityDraftEditor).props('rows').find((row: { key: string }) => row.key === 'spots')?.value).toBe('12 人')
   })
 })

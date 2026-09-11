@@ -17,6 +17,7 @@ import { useAppState } from '@/composables/useAppState'
 import { parks, type EventItem } from '@/data/events'
 import { updateEventInSupabase, updateEventStatusInSupabase } from '@/services/eventService'
 import type { ParticipantItem } from '@/services/registrationService'
+import { formatTimeRange, parseStoredTimeRange, timeMinutes } from '@/utils/eventDateTime'
 
 type ManageSubView = 'edit' | 'attendees' | 'change' | 'end' | null
 
@@ -40,6 +41,7 @@ const editForm = ref({
   type: '健走',
   date: '',
   time: '09:00',
+  endTime: '10:00',
   park: '',
   meeting: '',
   spots: 12,
@@ -47,15 +49,19 @@ const editForm = ref({
   audience: '',
   items: '',
   cost: '免費',
+  costAmount: null as number | null,
   intro: '',
 })
 
 function loadEditForm(event: EventItem) {
+  let time = { startTime: '', endTime: '' }
+  try { time = parseStoredTimeRange(event.time) } catch { showToast('舊活動時間無法辨識，請重新設定開始與結束時間') }
   editForm.value = {
     title: event.title,
     type: event.type,
     date: event.isoDate,
-    time: event.time.includes('－') ? event.time.split('－')[0].replace(/[^0-9:]/g, '') : event.time.replace(/[^0-9:]/g, '') || '09:00',
+    time: time.startTime,
+    endTime: time.endTime,
     park: event.park.name,
     meeting: event.park.meeting || '',
     spots: event.maxSpots,
@@ -63,6 +69,7 @@ function loadEditForm(event: EventItem) {
     audience: event.audience,
     items: event.items,
     cost: event.cost,
+    costAmount: event.costAmount ?? null,
     intro: event.description,
   }
 }
@@ -120,17 +127,20 @@ function showToast(msg: string) {
 
 async function saveEdit() {
   if (!selectedEvent.value || isSaving.value) return
+  if (!validEditedTime()) return
+  if (editForm.value.cost === '付費' && (!Number.isInteger(editForm.value.costAmount) || Number(editForm.value.costAmount) < 1 || Number(editForm.value.costAmount) > 9999)) { showToast('請填寫每人費用 NT$1–9,999'); return }
   isSaving.value = true
   try {
     const saved = await updateEventInSupabase(selectedEvent.value.id, {
       title: editForm.value.title,
       iso_date: editForm.value.date,
-      time: editForm.value.time,
+      time: formatTimeRange(editForm.value.time, editForm.value.endTime),
       park_name: editForm.value.park,
       park_meeting: editForm.value.meeting,
       max_spots: editForm.value.spots,
       difficulty: editForm.value.level,
       cost: editForm.value.cost,
+      cost_amount: editForm.value.cost === '免費' ? 0 : editForm.value.costAmount,
       description: editForm.value.intro,
       items: editForm.value.items,
       audience: editForm.value.audience,
@@ -143,6 +153,10 @@ async function saveEdit() {
     selectedEvent.value.description = editForm.value.intro
     selectedEvent.value.items = editForm.value.items
     selectedEvent.value.audience = editForm.value.audience
+    selectedEvent.value.cost = editForm.value.cost === '免費' ? '免費' : '付費'
+    selectedEvent.value.costAmount = editForm.value.cost === '免費' ? 0 : editForm.value.costAmount
+    selectedEvent.value.time = formatTimeRange(editForm.value.time, editForm.value.endTime)
+    selectedEvent.value.isoDate = editForm.value.date
     showToast('已儲存活動變更')
     activeSubView.value = null
   } finally {
@@ -152,22 +166,32 @@ async function saveEdit() {
 
 async function saveChange() {
   if (!selectedEvent.value || isSaving.value) return
+  if (!validEditedTime()) return
   isSaving.value = true
   try {
     const saved = await updateEventInSupabase(selectedEvent.value.id, {
       iso_date: editForm.value.date,
-      time: editForm.value.time,
+      time: formatTimeRange(editForm.value.time, editForm.value.endTime),
       park_meeting: editForm.value.meeting,
     })
     if (!saved) {
       showToast('活動異動尚未儲存，請稍後重試')
       return
     }
+    selectedEvent.value.time = formatTimeRange(editForm.value.time, editForm.value.endTime)
+    selectedEvent.value.isoDate = editForm.value.date
+    selectedEvent.value.park.meeting = editForm.value.meeting
     showToast('已更新活動異動資訊')
     activeSubView.value = null
   } finally {
     isSaving.value = false
   }
+}
+
+function validEditedTime() {
+  const start = timeMinutes(editForm.value.time), end = timeMinutes(editForm.value.endTime)
+  if (start === null || end === null || end <= start) { showToast('請確認開始與結束時間，結束須晚於開始'); return false }
+  return true
 }
 
 async function cancelActivity() {
@@ -293,6 +317,9 @@ async function markActivityEnd() {
           <label for="edit-meeting">集合地點</label>
           <input id="edit-meeting" v-model="editForm.meeting" class="input" required />
         </div>
+        <div class="field"><label for="edit-end-time">結束時間</label><input id="edit-end-time" v-model="editForm.endTime" type="time" class="input" required /></div>
+        <div class="field"><label for="edit-cost">費用</label><select id="edit-cost" v-model="editForm.cost" class="select"><option>免費</option><option>付費</option></select></div>
+        <div v-if="editForm.cost === '付費'" class="field"><label for="edit-cost-amount">每人費用（新台幣）</label><input id="edit-cost-amount" v-model.number="editForm.costAmount" type="number" min="1" max="9999" class="input" required /></div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="field">
@@ -391,6 +418,7 @@ async function markActivityEnd() {
           <label for="change-meeting">集合地點</label>
           <input id="change-meeting" v-model="editForm.meeting" class="input" required />
         </div>
+        <div class="field"><label for="change-end-time">結束時間</label><input id="change-end-time" v-model="editForm.endTime" type="time" class="input" required /></div>
 
         <button class="button button--primary button--full" type="submit" style="margin-top: 8px;" :disabled="isSaving" :aria-busy="isSaving">
           {{ isSaving ? '正在儲存…' : '儲存異動' }}

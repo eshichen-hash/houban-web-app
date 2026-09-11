@@ -1,3 +1,4 @@
+import { formatEventCost } from '@/utils/eventCost'
 import type { EventItem } from '@/data/events'
 import { addCalendarDays, eventDateTime, parseStoredTimeRange } from './eventDateTime'
 
@@ -43,7 +44,7 @@ export function generateGoogleCalendarUrl(event: EventItem): string {
     `集合地點：${event.park.meeting}`,
     `公園地址：${event.park.address}`,
     `攜帶物品：${event.items || '自備飲用水'}`,
-    `活動費用：${event.cost || '免費'}`,
+    `活動費用：${formatEventCost(event)}`,
     `活動發起人：${event.organizer.name}`,
     `活動詳情網址：${window.location.origin}/activity/${event.id}`,
     '',
@@ -78,7 +79,7 @@ export function generateIcsContent(event: EventItem): string {
     `集合地點：${event.park.meeting}`,
     `公園地址：${event.park.address}`,
     `攜帶物品：${event.items || '自備飲用水'}`,
-    `活動費用：${event.cost || '免費'}`,
+    `活動費用：${formatEventCost(event)}`,
     `活動發起人：${event.organizer.name}`,
     `活動詳情：${window.location.origin}/activity/${event.id}`,
     '\\n💡 提醒您：建議提前 10 分鐘抵達集合地點。',

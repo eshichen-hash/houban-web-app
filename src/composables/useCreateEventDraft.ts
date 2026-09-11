@@ -5,7 +5,7 @@ import { addCalendarDays, eventDateKey, eventDateTime, formatEventDate, formatTi
 
 export type CreateEventInput = Omit<EventItem, 'id' | 'organizer'>
 
-export type CreateValidationErrors = Partial<Record<'type' | 'isoDate' | 'time' | 'endTime' | 'park' | 'meeting' | 'spots', string>>
+export type CreateValidationErrors = Partial<Record<'type' | 'isoDate' | 'time' | 'endTime' | 'park' | 'meeting' | 'spots' | 'cost', string>>
 
 export function useCreateEventDraft() {
   const today = new Date()
@@ -22,6 +22,7 @@ export function useCreateEventDraft() {
     spots: 12,
     difficulty: '輕鬆' as Difficulty,
     cost: '免費' as Cost,
+    costAmount: null as number | null,
     intro: '',
     isoDate: todayIso,
     time: '09:00',
@@ -43,7 +44,7 @@ export function useCreateEventDraft() {
   const generatedName = computed(() => {
     if (!form.type) return ''
     const locationName = selectedPark.value?.name || ''
-    const activityName = form.type === '健走' ? '晨間健走' : `一起${form.type}`
+    const activityName = `一起${form.type}`
     return locationName ? `${locationName}・${activityName}` : activityName
   })
   const generatedIntro = computed(() => {
@@ -68,6 +69,7 @@ export function useCreateEventDraft() {
     if (!selectedPark.value) errors.park = '請從搜尋結果選擇活動地點'
     if (!form.meeting.trim()) errors.meeting = '請選擇或輸入集合地點'
     if (!Number.isInteger(form.spots) || form.spots < 3 || form.spots > 50) errors.spots = '活動名額須為 3–50 人的整數'
+    if (form.cost === '付費' && (!Number.isInteger(form.costAmount) || Number(form.costAmount) < 1 || Number(form.costAmount) > 9999)) errors.cost = '請填寫每人費用 NT$1–9,999'
     return errors
   }
   const validationErrors = computed(() => validateFields(validationNow.value))
@@ -158,6 +160,7 @@ export function useCreateEventDraft() {
       spots: form.spots,
       maxSpots: form.spots,
       cost: form.cost,
+      costAmount: form.cost === '免費' ? 0 : form.costAmount,
       audience: form.audience.trim() || (form.difficulty === '輕鬆' ? '初學者也可以參加' : '適合喜歡持續活動者'),
       description: form.intro.trim() || generatedIntro.value,
       items: form.items.trim() || '飲用水、帽子（可選）',

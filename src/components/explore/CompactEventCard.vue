@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEventCost } from '@/utils/eventCost'
 import { Clock3, MapPin } from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useAppState } from '@/composables/useAppState'
@@ -33,7 +34,7 @@ const isRegistered = computed(() => state.registered.includes(props.event.id))
           </span>
         </div>
         <div class="compact-event-card__footer">
-          <span class="tag tag--success">{{ props.event.cost }}</span>
+          <span class="tag tag--success">{{ formatEventCost(props.event) }}</span>
           <strong>查看詳情 <span aria-hidden="true">→</span></strong>
         </div>
       </div>

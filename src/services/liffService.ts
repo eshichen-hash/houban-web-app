@@ -1,3 +1,4 @@
+import { formatEventCost } from '@/utils/eventCost'
 import liff from '@line/liff'
 import { reactive, readonly } from 'vue'
 import type { EventItem } from '@/data/events'
@@ -174,7 +175,7 @@ export async function shareActivityToLine(event: EventItem): Promise<{ success: 
                     },
                     {
                       type: 'text',
-                      text: `👥 名額：尚有 ${event.spots} 個名額（${event.cost}）`,
+                      text: `👥 名額：尚有 ${event.spots} 個名額（${formatEventCost(event)}）`,
                       size: 'sm',
                       color: '#475569',
                       wrap: true,

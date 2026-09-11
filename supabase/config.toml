@@ -416,3 +416,7 @@ enabled = true
 # performs LINE token verification before any private read or write.
 [functions.line-api]
 verify_jwt = false
+
+# Raw LINE ID tokens are verified with LINE before any paid service or database access.
+[functions.voice-draft]
+verify_jwt = false
