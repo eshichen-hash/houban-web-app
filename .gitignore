@@ -8,3 +8,4 @@ dist/
 Thumbs.db
 .DS_Store
 outputs/voice-create-qa/
+outputs/voice-live-qa/

@@ -17,10 +17,22 @@
 .vd-mic-button { display: grid; place-items: center; width: 88px; height: 88px; border: 0; border-radius: 50%; background: #486f52; color: white; box-shadow: 0 0 0 10px #e8efe5, 0 7px 20px #315b5d22; margin: 10px 0 19px; cursor: pointer; transition: transform .18s, background .18s; }
 .vd-mic-button:not(:disabled):hover { background: #3d6347; transform: translateY(-2px); }
 .vd-mic-button.is-recording { background: #a33e2e; box-shadow: 0 0 0 10px #f7e5de; animation: vd-breathe 2s ease-in-out infinite; }
+.vd-capture.is-active .vd-recorder-status { min-height: 0; gap: 4px; }
+.vd-capture.is-active .vd-mic-button { width: 60px; height: 60px; margin: 12px 0 14px; }
+.vd-capture.is-active .vd-transcript { margin-top: 12px; }
 .vd-processing-icon { color: #486f52; margin: 20px; }
 .vd-privacy { border-top: 1px solid #e5e9e1; margin: 24px 0 0; padding-top: 17px; display: flex; align-items: flex-start; justify-content: center; gap: 8px; color: #5d6f70; font-size: .72rem; line-height: 1.8; text-align: left; }
 .vd-privacy svg { flex-shrink: 0; margin-top: 3px; }
 .vd-muted { color: #566d72; font-size: .88rem; line-height: 1.7; }
+.vd-transcript { text-align: left; margin-top: 20px; }
+.vd-transcript-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-weight: 700; }
+.vd-transcript .vd-input { min-height: 144px; line-height: 1.75; font-size: max(16px, 1rem); overflow-wrap: anywhere; }
+.vd-transcript .vd-input:focus-visible { outline: 3px solid #e8892b; outline-offset: 3px; }
+.vd-transcript .vd-input[readonly] { background: #f5f8f2; }
+.vd-transcript .vd-muted { font-size: .78rem; margin: 8px 0 12px; }
+.vd-transcript .vd-primary { width: 100%; }
+.vd-live-badge { display: inline-flex; align-items: center; gap: 6px; color: #3c6647; font-size: .7rem; }
+.vd-live-badge > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .vd-mobile-break { display: none; }
 .vd-primary, .vd-secondary, .vd-text-button, .vd-icon-button { font: inherit; cursor: pointer; }
 .vd-primary, .vd-secondary { min-height: 52px; border-radius: 15px; display: inline-flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 20px; font-weight: 750; text-align: center; }

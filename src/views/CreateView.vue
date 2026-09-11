@@ -8,9 +8,10 @@ import ActivityDraftEditor from '@/components/create/voice/ActivityDraftEditor.v
 import DraftFieldSheet, { type DraftFieldValue } from '@/components/create/voice/DraftFieldSheet.vue'
 import { useVoiceActivityDraft, DRAFT_STORAGE_KEY, readSavedDraft, saveDraft, type DraftField } from '@/composables/useVoiceActivityDraft'
 import { useActivityRecorder } from '@/composables/useActivityRecorder'
+import { useLiveActivityVoice } from '@/composables/useLiveActivityVoice'
 import { useAppState } from '@/composables/useAppState'
 import { initLiff, requireVerifiedLineToken, useLiff } from '@/services/liffService'
-import { processActivityAudio } from '@/services/voiceDraftService'
+import { processActivityAudio, processActivityTranscript, VoiceServiceError } from '@/services/voiceDraftService'
 import { activityPreset, uploadActivityImage } from '@/services/activityImageService'
 import type { SelectedParkResult } from '@/types/places'
 import '@/styles/voice-create.css'
@@ -24,32 +25,48 @@ const saved = shallowRef<unknown | null>(null), owner = shallowRef('guest')
 const confirmRerecord = shallowRef(false)
 let mounted = true, controller: AbortController | null = null, generation = 0, expiresAt = Date.now() + 86400000
 const recorder = useActivityRecorder((audio) => { void process(audio) })
+const live = useLiveActivityVoice((text) => { transcript.value = text; void process(text) })
+const voiceEngine = shallowRef<'live' | 'recorded'>('live'), transcript = shallowRef('')
+const voiceInput = computed(() => voiceEngine.value === 'live' ? live : recorder)
+const errorCode = shallowRef('')
+const retryable = computed(() => !['VOICE_BILLING_REQUIRED','VOICE_CONFIGURATION_ERROR','VOICE_DAILY_LIMIT'].includes(errorCode.value || live.errorCode.value))
+watch(live.transcript, (text) => { transcript.value = text })
 const image = computed(() => draft.form.image || activityPreset(draft.form.type))
 
 async function start() {
   if (authorizing.value || processing.value) return
-  error.value = ''
-  if (!recorder.supported()) { await recorder.start(); return }
+  error.value = ''; errorCode.value = ''
+  voiceEngine.value = live.supported() ? 'live' : 'recorded'
+  if (!voiceInput.value.supported()) { await voiceInput.value.start(); return }
   const current = ++generation
   authorizing.value = true
-  try { await requireVerifiedLineToken(); if (mounted && current === generation) await recorder.start() }
+  try { await requireVerifiedLineToken(); if (mounted && current === generation) { transcript.value = ''; await voiceInput.value.start() } }
   catch (err) { if (mounted && current === generation) error.value = err instanceof Error ? err.message : '請先登入 LINE 後開始錄音。' }
   finally { if (mounted) authorizing.value = false }
 }
-async function process(audio: Blob) {
+async function process(input: Blob | string) {
   if (processing.value) return
   controller = new AbortController(); const current = ++generation; processing.value = true; error.value = ''
   try {
-    const result = await processActivityAudio(audio, controller.signal)
+    const result = typeof input === 'string' ? await processActivityTranscript(input, controller.signal) : await processActivityAudio(input, controller.signal)
     if (!mounted || current !== generation) return
     draft.applyExtraction(result.extraction); recorder.clearAudio(); expiresAt = Date.now() + 86400000
     mode.value = 'draft'; persist(); await nextTick(); document.getElementById('draft-title')?.scrollIntoView({ block: 'start' })
   } catch (err) {
+    if (mounted && current === generation && err instanceof VoiceServiceError) {
+      errorCode.value = err.code
+      if (err.transcript) transcript.value = err.transcript
+    }
     if (mounted && current === generation) error.value = err instanceof Error && err.name !== 'AbortError' ? err.message : '語音整理逾時，請重試。'
   } finally { if (mounted && current === generation) processing.value = false }
 }
-function cancelRecording() { ++generation; controller?.abort(); recorder.cancel(); processing.value = false; authorizing.value = false; error.value = '' }
-function openText() { cancelRecording(); draft.blank(); expiresAt = Date.now() + 86400000; mode.value = 'draft'; persist() }
+function cancelRecording() { ++generation; controller?.abort(); recorder.cancel(); live.cancel(); transcript.value = ''; processing.value = false; authorizing.value = false; error.value = ''; errorCode.value = '' }
+function cancelVoice() {
+  if (!processing.value) { cancelRecording(); return }
+  ++generation; controller?.abort(); processing.value = false; error.value = ''; errorCode.value = ''
+}
+function openText() { const text = transcript.value; cancelRecording(); draft.blank(); if (text.trim()) draft.updateIntro(text.trim()); expiresAt = Date.now() + 86400000; mode.value = 'draft'; persist() }
+function retryVoice() { if (transcript.value.trim()) void process(transcript.value); else if (recorder.audio.value) void process(recorder.audio.value) }
 function openSheet(field: DraftField, message = '') { sheetError.value = message; sheet.value = field }
 function applyField(value: DraftFieldValue, place: SelectedParkResult | null) {
   const field = sheet.value
@@ -126,7 +143,7 @@ onScopeDispose(() => { mounted = false; ++generation; controller?.abort(); clear
     <main class="page-content create-content vd-page" aria-labelledby="create-title">
       <div class="vd-page-heading"><span class="vd-eyebrow">一起在公園相聚</span><h1 id="create-title">{{ mode === 'voice' ? '用說的，發起一場活動' : '確認你的活動草稿' }}</h1><p>{{ mode === 'voice' ? '說完交給我們整理，確認後再建立。' : '把細節確認好，就能邀請大家一起出門。' }}</p></div>
       <section v-if="saved && mode === 'voice'" class="vd-resume" aria-labelledby="resume-title"><h2 id="resume-title">此裝置有一份未完成草稿</h2><p>可以接著修改，或捨棄後重新開始。</p><div><button type="button" class="vd-primary" @click="resume">繼續草稿</button><button type="button" class="vd-secondary" @click="rerecord">捨棄草稿</button></div></section>
-      <VoiceCaptureCard v-if="mode === 'voice'" :state="recorder.state.value" :elapsed="recorder.elapsed.value" :error="error || recorder.error.value" :unavailable="recorder.unavailable.value" :processing="processing" :can-retry="recorder.canRetry.value" :authorizing="authorizing" @start="start" @stop="recorder.stop" @cancel="cancelRecording" @retry="recorder.audio.value && process(recorder.audio.value)" @text="openText" />
+      <VoiceCaptureCard v-if="mode === 'voice'" :state="voiceInput.state.value" :elapsed="voiceInput.elapsed.value" :error="error || voiceInput.error.value" :unavailable="voiceInput.unavailable.value" :processing="processing" :can-retry="retryable && (recorder.canRetry.value || transcript.trim().length > 1)" :authorizing="authorizing" :transcript="transcript" :live-status="voiceEngine === 'live' ? live.liveStatus.value : 'unavailable'" @update-transcript="transcript = $event" @start="start" @stop="voiceInput.stop" @cancel="cancelVoice" @retry="retryVoice" @text="openText" />
       <ActivityDraftEditor v-else :rows="draft.rows.value" :image="image" :image-source="draft.imageSource.value" :intro="draft.form.intro" :title="draft.displayName.value" :uploading="uploading" :saving="saving" :error="error" :upload-error="uploadError" :save-note="saveNote" @edit="openSheet" @upload="upload" @preset="draft.form.image = ''; draft.imageSource.value = 'preset'" @submit="submit" @rerecord="confirmRerecord = true" />
       <div v-if="confirmRerecord" class="vd-rerecord-confirm" role="alert"><p>重新錄音會取代目前草稿。要繼續嗎？</p><button class="vd-secondary" type="button" @click="confirmRerecord = false">保留草稿</button><button class="vd-primary" type="button" @click="rerecord">捨棄並重新錄音</button></div>
     </main>

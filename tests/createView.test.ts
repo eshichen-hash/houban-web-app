@@ -6,16 +6,18 @@ import VoiceCaptureCard from '@/components/create/voice/VoiceCaptureCard.vue'
 import ActivityDraftEditor from '@/components/create/voice/ActivityDraftEditor.vue'
 import DraftFieldSheet from '@/components/create/voice/DraftFieldSheet.vue'
 import { DRAFT_STORAGE_KEY, saveDraft, useVoiceActivityDraft } from '@/composables/useVoiceActivityDraft'
+import { normalizeExtraction } from '../supabase/functions/_shared/voiceContract'
+import { VoiceServiceError } from '@/services/voiceDraftService'
 
-const { createEvent, push, processAudio } = vi.hoisted(() => ({ createEvent: vi.fn(), push: vi.fn(), processAudio: vi.fn() }))
+const { createEvent, push, processAudio, processTranscript } = vi.hoisted(() => ({ createEvent: vi.fn(), push: vi.fn(), processAudio: vi.fn(), processTranscript: vi.fn() }))
 vi.mock('@/composables/useAppState', () => ({ useAppState: () => ({ createEvent }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/services/liffService', () => ({ initLiff: vi.fn().mockResolvedValue(undefined), requireVerifiedLineToken: vi.fn().mockResolvedValue('test-token'), useLiff: () => ({ liffState: { profile: null } }) }))
-vi.mock('@/services/voiceDraftService', () => ({ processActivityAudio: processAudio }))
+vi.mock('@/services/voiceDraftService', async (importOriginal) => ({ ...await importOriginal<typeof import('@/services/voiceDraftService')>(), processActivityAudio: processAudio, processActivityTranscript: processTranscript }))
 vi.mock('@/services/activityImageService', () => ({ activityPreset: () => '/activity-presets/walking.webp', uploadActivityImage: vi.fn() }))
 
 let wrapper: ReturnType<typeof mount>
-beforeEach(() => { localStorage.clear(); createEvent.mockReset(); push.mockReset(); processAudio.mockReset() })
+beforeEach(() => { localStorage.clear(); createEvent.mockReset(); push.mockReset(); processAudio.mockReset(); processTranscript.mockReset() })
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; localStorage.clear() })
 async function open(valid = false) {
   if (valid) {
@@ -34,6 +36,31 @@ async function open(valid = false) {
   if (valid) { await wrapper.findAll('button').find((b) => b.text() === '繼續草稿')!.trigger('click'); await flushPromises() }
 }
 describe('語音優先的建立活動流程', () => {
+  it('辨識文字可修改後整理，產生待確認草稿而不直接發布活動', async () => {
+    await open()
+    const text = '明天下午在公園健走'
+    processTranscript.mockResolvedValue({ transcript: text, extraction: normalizeExtraction({ type: '健走' }, text) })
+    await wrapper.get('textarea[aria-label="語音辨識文字"]').setValue(text)
+    await wrapper.findAll('button').find((b) => b.text() === '整理成活動草稿')!.trigger('click')
+    await flushPromises()
+    expect(processTranscript).toHaveBeenCalledWith(text, expect.any(AbortSignal))
+    expect(wrapper.text()).toContain('確認你的活動草稿')
+    expect(wrapper.text()).toContain('待確認')
+    expect(createEvent).not.toHaveBeenCalled()
+  })
+  it('API 無額度保留文字、開啟手動草稿且不顯示無效的立即重試', async () => {
+    await open()
+    processTranscript.mockRejectedValue(new VoiceServiceError('API 額度不足', 'VOICE_BILLING_REQUIRED'))
+    await wrapper.get('textarea').setValue('明天去大安森林公園健走')
+    await wrapper.findAll('button').find((b) => b.text() === '整理成活動草稿')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('textarea').element.value).toContain('大安森林公園')
+    expect(wrapper.text()).toContain('改用文字輸入')
+    expect(wrapper.text()).not.toContain('整理成活動草稿')
+    await wrapper.findAll('button').find((b) => b.text() === '改用文字輸入')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('明天去大安森林公園健走')
+  })
   it('正常入口只保留語音，不顯示舊三步驟與常駐文字入口', async () => {
     await open()
     expect(wrapper.text()).toContain('用說的，發起一場活動')

@@ -1,6 +1,19 @@
 # 語音產生活動草稿：實作與部署交接
 
-更新日期：2026-09-11。新版程式與本機測試已完成。已確認 Supabase 存有 `OPENAI_API_KEY` 的設定紀錄（未讀取金鑰值）。資料庫 migration `20260911111605` 已套用，SQL 安全回歸測試通過；`line-api` v3 與 `voice-draft` v1 已部署。前端發布狀態與實機驗證見下方部署紀錄。
+更新日期：2026-09-11。語音辨識與草稿整理已改用 **OpenRouter**，不再讀取 `OPENAI_API_KEY` 或直連 OpenAI。已在 Supabase 以現有 `VITE_OPENROUTER_API_KEY` 成功驗證真實語音辨識及結構化輸出，未讀取或輸出金鑰值。`voice-draft` v3 與 migration `20260911142112` 已部署；`line-api` 保留 v4。前端由本批 main 提交發布至 Vercel。
+
+## OpenRouter 語音流程
+
+點擊麥克風 → 驗證 LINE 身分 → 分句辨識並顯示繁體中文 → 停止並等待最後一句 → 整理草稿 → 使用者確認後建立。
+
+- 語音辨識：`qwen/qwen3-asr-1.7b`，經 OpenRouter `/audio/transcriptions`；OpenCC 轉為繁體中文。
+- 草稿整理：`google/gemini-2.5-flash-lite`，經 OpenRouter `/chat/completions`，使用 strict JSON Schema、支援參數篩選與伺服器欄位驗證。
+- 這是「逐句更新」，不是逐字零延遲。瀏覽器以 AudioWorklet 收音，約 2–4 秒一段完整 16kHz WAV，經加密 WebSocket 送至 Supabase。伺服器依序辨識，停止後等最後一段回覆，才整理草稿。
+- 不支援 AudioWorklet 的瀏覽器沿用完整錄音後辨識，會明確提示文字不會在錄音中更新。麥克風或服務失敗提供文字替代流程。
+- LINE token 放在第一個加密 WebSocket 訊息，不出現在 URL。通過 LINE 官方驗證後，才保留額度並呼叫付費服務。
+- 每日最多 10 次語音工作階段、10 次草稿整理；每段不超過 6 秒、每工作階段最多 45 段／100 秒音訊，佇列最多 3 段，伺服器 135 秒結束。正常錄音仍最多 90 秒。
+- 設定／額度錯誤不鼓勵無效重錄；服務失敗保留已辨識文字。未成功辨識的工作階段及伺服器整理失敗退還額度，跨午夜按原本的資料庫日期退還。
+- 音訊與文字會由 OpenRouter 及其模型供應商處理；本專案不保存音檔，不記錄逐字稿或憑證。不要把這解讀為對上游供應商保存政策的保證。
 
 ## 已實作流程
 
@@ -20,55 +33,79 @@
 
 - `src/views/CreateView.vue`：流程、登入、草稿恢復與提交。
 - `src/components/create/voice/`：語音入口、草稿卡、欄位設定面板、地點搜尋／預覽。
-- `src/composables/useActivityRecorder.ts`：錄音生命週期、取消及記憶體期限。
+- `src/composables/useLiveActivityVoice.ts`：即時連線、分句文字、停止等待最後一句、取消／背景釋放麥克風。
+- `src/services/voicePcm.ts`、`public/voice-capture-worklet.js`：PCM 收音、重採樣與完整 WAV 分段。
+- `src/composables/useActivityRecorder.ts`：不支援即時收音的備援錄音生命週期、取消及記憶體期限。
 - `src/composables/useVoiceActivityDraft.ts`：欄位狀態、確認規則、草稿快照。
 - `src/services/voiceDraftService.ts`：經身分驗證的語音 API；`activityImageService.ts`：圖片壓縮／簽名上傳。
 - `supabase/functions/voice-draft/`：語音轉文字與結構化擷取。
-- `supabase/functions/_shared/`：LINE 驗證、輸入契約、活動時間／費用／圖片驗證。
+- `supabase/functions/_shared/voiceProvider.ts`：僅伺服器端的 OpenRouter 金鑰、模型、錯誤映射與繁體轉換。
+- `supabase/functions/_shared/voiceSocket.ts`、`voiceAudio.ts`：身分驗證後的音訊串流、限額、格式驗證與退還額度。
+- `supabase/functions/_shared/` 其餘檔案：LINE 驗證、輸入契約、活動時間／費用／圖片驗證。
 - `supabase/migrations/20260911111605_voice_activity_drafts_and_images.sql`：新增費用金額、公開圖片桶、私有用量表、僅 service_role 可使用的限額 RPC。
+- `supabase/migrations/20260911142112_voice_live_and_failed_quota.sql`：分離語音／整理額度與失敗退款；遠端 migration 版本與此檔一致。
 
 ## 已完成的驗證
 
 - `npm run typecheck` 通過。
-- `npm test`：13 個測試檔、66 項測試通過。
+- `npm test`：15 個測試檔、78 項測試通過。
 - `npm run build` 通過；仍有既有單包超過 500KB 的提醒，路由分包留待效能階段。
-- `npx deno check supabase/functions/voice-draft/index.ts supabase/functions/line-api/index.ts` 通過。
+- Deno 實際入口與 WebSocket 單元測試：8 項通過，包括 OpenRouter 402、伺服器金鑰舊名稱相容、繁體中文、未登入禁止付費請求、最後一句、失敗退還及靜音／格式限制。
 - `scripts/qa-voice-create.mjs`：320／390／768／1280px 均無頁面或設定面板橫向溢出；欄位高至少 86px；可修改欄位，主操作可捲至導覽列上方點擊，麥克風入口在首屏可見。
-- 瀏覽器 QA 使用獨立 Edge 測試環境，模擬麥克風不支援，攔截雲端寫入；沒有錄製使用者的真實語音或建立雲端活動。
+- `scripts/qa-voice-live.mjs`：320／390／768／1280px 均無橫向溢出；以合成語音檔走 Chromium 原生收音與 AudioWorklet，驗證錄音中顯示文字、停止後整理、關閉收音，沒有發布活動。LINE／WebSocket／整理回應為隔離測試資料，不是假裝正式辨識。
+- **另行真實 API 驗證**：使用非個人資訊的約 5 秒測試音檔，OpenRouter 成功辨識「明天下午三點到四點，在大安森林公園健走」，Gemini 以簡化 schema 成功輸出活動類型；兩段 API 合計約 5.4 秒。這不等同完整 LINE 手機端驗收。測試用臨時函式 `voice-provider-check` 已刪除，正式服務不依賴它。
 
-**雲端資料庫已驗證**：`supabase/tests/voice_activity_security.sql` 已執行通過，測試交易已回滾；既有 12 場活動、5 筆報名保留。名額／費用限制、圖片路徑授權的函式規則也有本機單元測試。
+**雲端資料庫已驗證**：既有 `supabase/tests/voice_activity_security.sql` 安全檢查與本批 `supabase/tests/voice_quota.sql` 額度／跨午夜／ACL 檢查通過，測試交易均回滾。此次未建立、刪除或更動活動／報名。僅恢復 2026-09-11 單一測試者先前失敗消耗的 10 次 voice 額度。
 
-**尚未實機驗證**：實際 LINE／iOS／Android 麥克風、OpenAI 真實請求、Google 地點實際選取與用量、雲端圖片上傳、雲端發布活動。金鑰設定存在不等於已確認金鑰有效或帳戶額度充足。
+**尚未實機驗證**：實際 LINE／iOS／Android 麥克風與完整草稿流程、Google 地點實際選取、雲端圖片上傳與發布活動。金鑰 API 驗證成功不等於所有實機／網路環境都成功。
 
 ## 部署紀錄
 
-- Supabase migration：`20260911111605_voice_activity_drafts_and_images`，已套用。
-- Edge Functions：`line-api` v3、`voice-draft` v1，狀態 ACTIVE。
-- 前端候選版本：`a78b9cf`，Vercel 預覽部署 `9CeYU1PihLdmocgy75qdk1pEAwqf` 已 Ready。雲端頁面與圖片正常、麥克風按鈕 88px、無橫向溢出或主控台錯誤；依下列順序從 main 發布至正式網址。
-- 雲端 HTTP 邊界檢查：語音預檢 OPTIONS 為 204；語音與一般 API 的未登入／假憑證均為 401；語音不允許來源為 403。
-- 安全顧問的「RLS 已啟用但沒有 policy」提示對私人收藏／報名／用量表是刻意的拒絕直接存取設計，僅由驗證 LINE 身分的伺服器處理。
+- Supabase migrations：`20260911111605_voice_activity_drafts_and_images`、`20260911142112_voice_live_and_failed_quota` 已套用。
+- Edge Functions：`line-api` v4（此次未改）、`voice-draft` v3，狀態 ACTIVE。
+- 前端正式網址：[發起活動](https://houban-web-app.vercel.app/create)。本批 main 提交觸發正式 Vercel 部署，發布後確認 HTML／資源版本與新版隱私說明。
+- 雲端 HTTP 邊界檢查：語音 OPTIONS 204、未登入 401、不允許來源 403。真實 WebSocket upgrade 成功，未驗證身分的音訊被拒絕，沒有呼叫付費模型。
+- 安全顧問只有 3 項 INFO：私人收藏／報名／用量表「RLS 已啟用但沒有 policy」為刻意拒絕直接存取，僅由驗證 LINE 身分的伺服器處理。[Supabase 說明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)。
 
-## 專案擁有者先完成的設定
+## 伺服器設定（已相容目前的 Secret）
 
-1. 前往 [OpenAI API keys](https://platform.openai.com/api-keys)，建立供本專案使用的 API key，名稱可用 `houban-voice`。金鑰完整值只在建立時顯示，請安全保管。請確認 API 帳戶有可用額度；API 費用與 ChatGPT 訂閱分開。
-2. 前往 [本專案的 Supabase Edge Functions Secrets](https://supabase.com/dashboard/project/dpyputseylxmvitagkgh/functions/secrets)。確認專案名稱是 `houban-web-app`。
-3. 新增名稱 **OPENAI_API_KEY**；值填入上述金鑰，按 Save。不要加 `VITE_` 前綴，不要放入前端、Git 或對話。只需回覆「已設定」，不需提供金鑰或含完整值的截圖。
+1. 在 [本專案 Supabase Secrets](https://supabase.com/dashboard/project/dpyputseylxmvitagkgh/functions/secrets) 設定 `OPENROUTER_API_KEY`。為相容現況，伺服器亦接受目前已存在的 `VITE_OPENROUTER_API_KEY`；新名稱優先。**這個相容名稱只在 Supabase 讀取，不可放入 Vite／Vercel 前端環境變數。**
+2. 可選設定 `OPENROUTER_TRANSCRIPTION_MODEL`、`OPENROUTER_EXTRACTION_MODEL`；未設定即使用上述已測試模型。不可把舊 OpenAI model ID 直接代入。
+3. 舊 `OPENAI_API_KEY` 不再使用，此次未刪除既有 Secret。金鑰不得貼入對話、前端、Git 或日誌；帳戶額度與每把金鑰的 spending limit 都會影響請求。
 
-## 後續部署順序
+## 回歸與後續驗收
 
-1. 確認伺服器 Secrets 與 LINE Channel 設定；保留既有正式版本。
-2. 審核並套用上述加法式 migration，再執行 SQL 回歸測試；測試以交易回滾結束。
-3. 部署新版 `line-api` 與 `voice-draft`。兩者自行驗證 LINE token，不以關閉平台 JWT 驗證作為匿名授權。
-4. 先驗證未登入拒絕、跨使用者圖片路徑拒絕、費用／時間限制、每日配額、上傳成功與失敗、建立重試不重複。
-5. 保留已通過檢查的 Git 候選分支與上一版 main `29f744d`，以 fast-forward 更新 main 觸發正式 Vercel 部署；確認 Vercel Ready 與正式 `/create` 頁面的新版入口。若失敗，保持或回復上一版前端；新增資料欄位不刪除。
-6. 請專案擁有者在正式 LIFF 網址實機測試 LINE 登入 → 語音 → 確認地點 → 編輯 → 建立。代理未啟用使用者的麥克風，也未擷取瀏覽器登入憑證，不能將模擬／未登入測試當成真實語音驗證。
-7. iOS Safari、Android Chrome 與 LINE 內建瀏覽器補充實機檢查：拒絕權限、背景中斷、慢網路、逾時重試、草稿恢復、底部鍵盤與導覽列遮擋。
+1. 本機執行 typecheck、Vitest、build。Deno 與 npm 依賴隔離，避免 Deno 自動安裝前端 package.json：
+
+```powershell
+$env:DENO_NO_PACKAGE_JSON = '1'
+npx deno test --no-config --node-modules-dir=none --lock=supabase/deno.lock --allow-env --allow-net supabase/tests/voice_draft_test.ts
+```
+
+2. 本機啟動 4175 後執行兩個 QA script；`PLAYWRIGHT_MODULE_PATH` 可指向已安裝的 Playwright。Live QA 需非個人資料的 WAV，可透過 `QA_AUDIO_FILE` 指定。Windows 可生成測試檔：
+
+```powershell
+Add-Type -AssemblyName System.Speech
+New-Item -ItemType Directory -Force -Path 'outputs/voice-live-qa'
+$qaSpeech = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$qaSpeech.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSet, [System.Speech.Synthesis.VoiceAge]::NotSet, 0, [Globalization.CultureInfo]::GetCultureInfo('zh-TW'))
+$qaSpeech.SetOutputToWaveFile((Join-Path (Get-Location) 'outputs/voice-live-qa/speech-fixture.wav'))
+$qaSpeech.Speak('明天下午三點到四點，在大安森林公園健走。')
+$qaSpeech.Dispose()
+node scripts/qa-voice-live.mjs
+node scripts/qa-voice-create.mjs
+```
+
+3. [正式 LIFF](https://liff.line.me/2011461980-fDJU0gL6) 實機測試：登入 → 錄音時看見繁體文字 → 停止後最後一句保留 → 草稿欄位正確／缺漏標示 → 確認地點 → 編輯 → 確認並建立。代理不擷取瀏覽器登入憑證，也不啟用使用者麥克風。
+4. iOS Safari、Android Chrome、LINE 內建瀏覽器補測：拒絕權限、背景中斷、慢網路、額度不足、重試、草稿恢復、鍵盤與導覽列遮擋。
+5. 退版時先回復前端，再回復 voice-draft 原始碼；不要刪除新增 migration／資料。單包超過 500KB 的既有提醒留待路由分包階段。
 
 ## 官方依據
 
 - [Supabase：管理 Edge Function Secrets](https://supabase.com/docs/guides/functions/secrets)
-- [OpenAI：建立與管理 API key](https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key)
-- [OpenAI：Speech to text](https://developers.openai.com/api/docs/guides/speech-to-text)
-- [OpenAI：Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Supabase：WebSockets](https://supabase.com/docs/guides/functions/websockets)
+- [OpenRouter：Speech to text](https://openrouter.ai/docs/guides/overview/multimodal/stt)
+- [OpenRouter：Structured Outputs](https://openrouter.ai/docs/guides/features/structured-outputs)
+- [Vite：環境變數與前端暴露範圍](https://vite.dev/guide/env-and-mode)
 - [Google：Autocomplete Data API](https://developers.google.com/maps/documentation/javascript/place-autocomplete-data)
 - [Google：Places API policies](https://developers.google.com/maps/documentation/places/web-service/policies)
