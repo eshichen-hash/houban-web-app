@@ -30,17 +30,18 @@ async function playTone(kind: VoiceFeedbackKind) {
   let context: AudioContext | null = null
   try {
     context = new AudioContextClass()
-    if (context.state === 'suspended') await context.resume()
+    const resumePromise = context.state === 'suspended' ? context.resume().catch(() => {}) : Promise.resolve()
     const oscillator = context.createOscillator(), gain = context.createGain()
     const { frequency, duration } = toneSettings[kind], start = context.currentTime
     oscillator.type = 'sine'
     oscillator.frequency.setValueAtTime(frequency, start)
     gain.gain.setValueAtTime(0.0001, start)
-    gain.gain.exponentialRampToValueAtTime(0.035, start + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.08, start + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
     oscillator.connect(gain); gain.connect(context.destination)
     oscillator.addEventListener('ended', () => { void context?.close().catch(() => {}) }, { once: true })
     oscillator.start(start); oscillator.stop(start + duration + 0.01)
+    await resumePromise
     return true
   } catch {
     if (context) void context.close().catch(() => {})

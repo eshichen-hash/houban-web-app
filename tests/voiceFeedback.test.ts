@@ -64,6 +64,38 @@ describe('語音操作的多感官回饋', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
+  it('AudioContext 尚未解鎖時也要先啟動音效，再等待 resume', async () => {
+    let resolveResume!: () => void
+    const resume = new Promise<void>((resolve) => { resolveResume = resolve })
+    const oscillator = {
+      type: 'sine',
+      frequency: { setValueAtTime: vi.fn() },
+      connect: vi.fn(),
+      addEventListener: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+    }
+    const gain = {
+      gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+      connect: vi.fn(),
+    }
+    const AudioContextMock = vi.fn(function AudioContextMock(this: Record<string, unknown>) {
+      Object.assign(this, {
+        state: 'suspended', currentTime: 0, destination: {},
+        resume: () => resume, close: () => Promise.resolve(),
+        createOscillator: () => oscillator, createGain: () => gain,
+      })
+    })
+    setVibrate(vi.fn().mockReturnValue(false))
+    setAudioContext(AudioContextMock)
+
+    const feedback = triggerVoiceFeedback('start')
+    await Promise.resolve()
+    expect(oscillator.start).toHaveBeenCalledOnce()
+    resolveResume()
+    await expect(feedback).resolves.toBe('sound')
+  })
+
   it('震動和音效都不可用時無例外，交由畫面狀態回饋', async () => {
     setVibrate(undefined)
     setAudioContext(undefined)

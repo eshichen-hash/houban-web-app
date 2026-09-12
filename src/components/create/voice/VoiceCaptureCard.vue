@@ -14,9 +14,11 @@ const props = withDefaults(defineProps<{
   liveStatus: string
   audioLevel?: number
   notice?: string
+  feedback?: 'start' | 'stop' | 'cancel' | ''
 }>(), {
   audioLevel: 0,
   notice: '',
+  feedback: '',
 })
 
 const emit = defineEmits<{
@@ -64,7 +66,7 @@ watch(() => props.state, (state, previous) => {
 </script>
 
 <template>
-  <section class="vd-capture" :class="{ 'is-active': busy }" aria-labelledby="voice-invitation">
+  <section class="vd-capture" :class="{ 'is-active': busy, 'is-feedback': feedback }" aria-labelledby="voice-invitation">
     <div class="vd-capture-intro">
       <h2 id="voice-invitation">用一句話說明活動</h2>
       <p v-if="!busy">先說「做什麼、什麼時候、在哪裡」，其他細節可在草稿補上。</p>

@@ -37,4 +37,13 @@ describe('錄音即時文字與失敗救援', () => {
     expect(wrapper.find('details').attributes('open')).toBeUndefined()
     wrapper.unmount()
   })
+  it('操作後立即顯示視覺回饋，不依賴震動或提示音是否成功', () => {
+    const wrapper = mount(VoiceCaptureCard, { props: {
+      state: 'idle', elapsed: 0, error: '', unavailable: false,
+      processing: false, canRetry: false, authorizing: false,
+      transcript: '', liveStatus: 'idle', feedback: 'start',
+    } })
+    expect(wrapper.find('.vd-capture').classes()).toContain('is-feedback')
+    wrapper.unmount()
+  })
 })

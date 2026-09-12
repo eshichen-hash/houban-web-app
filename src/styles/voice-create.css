@@ -25,6 +25,8 @@
 .vd-capture.is-active .vd-recorder-status { min-height: 0; gap: 4px; }
 .vd-capture.is-active .vd-mic-button { width: 60px; height: 60px; margin: 12px 0 14px; }
 .vd-capture.is-active .vd-transcript { margin-top: 12px; }
+.vd-capture.is-feedback { outline: 3px solid #e8892b; outline-offset: 2px; animation: vd-feedback-ring .42s ease-out; }
+.vd-capture.is-feedback .vd-mic-button { animation: vd-feedback-button .42s ease-out; }
 .vd-processing-icon { color: #486f52; margin: 20px; }
 .vd-audio-meter { height: 38px; margin: -8px 0 2px; display: flex; align-items: center; justify-content: center; gap: 4px; }
 .vd-audio-meter span { display: block; width: 4px; height: 34px; transform-origin: center; border-radius: 9px; background: #a33e2e; transition: transform 80ms linear; }
@@ -145,9 +147,11 @@ textarea.vd-input { resize: vertical; }
 .vd-spin { animation: vd-spin 1.4s linear infinite; }
 @keyframes vd-spin { to { transform: rotate(360deg); } }
 @keyframes vd-breathe { 50% { box-shadow: 0 0 0 14px #f7e5de; } }
+@keyframes vd-feedback-ring { to { outline-color: transparent; } }
+@keyframes vd-feedback-button { 0% { transform: scale(.94); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
 @media (hover: hover) { .vd-mic-button:not(:disabled):hover { background: #3d6347; transform: translateY(-2px); } }
 @media (min-width: 760px) { .vd-draft-actions { grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr); } }
 @media (min-width: 920px) { .voice-create-view .topbar--brand > .brand-logo { visibility: hidden; } }
 @media (max-width: 420px) { .vd-capture { padding: 24px 18px; } .vd-sentence-formula { gap: 5px; } .vd-sentence-formula li { padding: 8px 6px; gap: 5px; } .vd-sentence-formula li > svg { flex-basis: 18px; width: 18px; height: 18px; } .vd-sentence-formula strong { font-size: .78rem; } .vd-sentence-formula small { font-size: .68rem; white-space: normal; } .vd-voice-example { padding: 14px 15px; } .vd-sheet-body, .vd-sheet-header { padding-inline: 18px; } .vd-sheet-footer { padding-inline: 18px; } .vd-field { padding: 15px 17px; gap: 8px; } .vd-field-end { flex-direction: column; gap: 6px; align-items: flex-end; } .vd-field-status { font-size: .65rem; } .vd-radio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 340px) { .vd-sentence-formula small { display: none; } .vd-time-inputs { grid-template-columns: 1fr; } .vd-field-end { max-width: 73px; } }
-@media (prefers-reduced-motion: reduce) { .vd-spin, .vd-mic-button.is-recording { animation: none; } .vd-mic-button, .vd-audio-meter span, .vd-speaking-guide summary svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .vd-spin, .vd-mic-button.is-recording, .vd-capture.is-feedback, .vd-capture.is-feedback .vd-mic-button { animation: none; } .vd-mic-button, .vd-audio-meter span, .vd-speaking-guide summary svg { transition: none; } }
