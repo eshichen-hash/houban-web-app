@@ -46,6 +46,9 @@ async function start(finished = vi.fn()) {
 describe('OpenRouter 逐句辨識的生命週期（傳輸邊界替身）', () => {
   it('錄音中顯示文字，完成最後一段才整理且關閉麥克風', async () => {
     const finished = vi.fn(), voice = await start(finished)
+    const captureOptions = capturePcm.mock.calls[0]![1] as { onLevel: (value: number) => void }
+    captureOptions.onLevel(0.72)
+    expect(voice.level.value).toBe(0.72)
     await socket.emit({ type: 'transcript', seq: 0, text: '大安森林公園，' })
     expect(voice.transcript.value).toBe('大安森林公園，')
     expect(voice.state.value).toBe('recording')
@@ -56,6 +59,7 @@ describe('OpenRouter 逐句辨識的生命週期（傳輸邊界替身）', () =>
     await socket.emit({ type: 'transcript', seq: 1, text: '明天下午健走。' })
     await socket.emit({ type: 'done' })
     expect(finished).toHaveBeenCalledExactlyOnceWith('大安森林公園，明天下午健走。')
+    expect(voice.level.value).toBe(0)
   })
   it('取消後晚到的音訊初始化不會重新打開麥克風', async () => {
     let resolve!: (value: typeof audio) => void

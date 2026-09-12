@@ -6,7 +6,7 @@ import { captureVoicePcm } from '@/services/voicePcm'
 
 export function useLiveActivityVoice(onFinished: (text: string) => void) {
   const state = shallowRef<'idle' | 'requesting' | 'connecting' | 'recording' | 'stopping' | 'stopped' | 'error'>('idle')
-  const transcript = shallowRef(''), error = shallowRef(''), errorCode = shallowRef(''), elapsed = shallowRef(0), unavailable = shallowRef(false)
+  const transcript = shallowRef(''), error = shallowRef(''), errorCode = shallowRef(''), elapsed = shallowRef(0), level = shallowRef(0), unavailable = shallowRef(false)
   const liveStatus = computed(() => state.value === 'recording' ? 'listening' : state.value === 'connecting' ? 'connecting' : state.value === 'stopping' ? 'finishing' : 'idle')
   let stream: MediaStream | null = null, socket: WebSocket | null = null, capture: Awaited<ReturnType<typeof captureVoicePcm>> | null = null
   let controller: AbortController | null = null, generation = 0, startedAt = 0, expectedSequence = 0
@@ -18,6 +18,7 @@ export function useLiveActivityVoice(onFinished: (text: string) => void) {
     capture?.close(); capture = null
     stream?.getTracks().forEach((track) => track.stop()); stream = null
     if (socket) { socket.onopen = null; socket.onmessage = null; socket.onclose = null; socket.onerror = null; socket.close(); socket = null }
+    level.value = 0
   }
   function cancel() { generation++; release(); state.value = 'idle'; elapsed.value = 0; transcript.value = ''; expectedSequence = 0; error.value = ''; errorCode.value = '' }
   function fail(message: string, code = '') { generation++; release(); error.value = message; errorCode.value = code; state.value = 'error' }
@@ -60,11 +61,15 @@ export function useLiveActivityVoice(onFinished: (text: string) => void) {
           const event = JSON.parse(data)
           if (event.type === 'error') { fail(event.message || '語音服務暫時失敗，文字已保留。', event.code); return }
           if (event.type === 'ready' && state.value === 'connecting') {
-            const audio = await captureVoicePcm(incoming, (wave) => {
-              if (run !== generation || !['recording','stopping'].includes(state.value)) return
-              if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount > 512000) { fail('網路傳輸較慢，已保留文字，請稍後重試。'); return }
-              ws.send(wave)
-            }, controller!.signal)
+            const audio = await captureVoicePcm(incoming, {
+              signal: controller!.signal,
+              onSegment(wave) {
+                if (run !== generation || !['recording','stopping'].includes(state.value)) return
+                if (ws.readyState !== WebSocket.OPEN || ws.bufferedAmount > 512000) { fail('網路傳輸較慢，已保留文字，請稍後重試。'); return }
+                ws.send(wave)
+              },
+              onLevel(value) { if (run === generation && state.value === 'recording') level.value = value },
+            })
             if (run !== generation) { audio.close(); return }
             capture = audio; clearTimeout(connectTimer)
             incoming.getTracks().forEach((track) => { track.enabled = true })
@@ -92,5 +97,5 @@ export function useLiveActivityVoice(onFinished: (text: string) => void) {
   document.addEventListener('visibilitychange', onHidden)
   window.addEventListener('pagehide', cancel)
   onScopeDispose(() => { cancel(); document.removeEventListener('visibilitychange', onHidden); window.removeEventListener('pagehide', cancel) })
-  return { state, transcript, error, errorCode, elapsed, liveStatus, unavailable, supported, start, stop, cancel }
+  return { state, transcript, error, errorCode, elapsed, level, liveStatus, unavailable, supported, start, stop, cancel }
 }

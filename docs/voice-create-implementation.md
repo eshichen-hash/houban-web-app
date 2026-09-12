@@ -1,6 +1,6 @@
 # 語音產生活動草稿：實作與部署交接
 
-更新日期：2026-09-11。語音辨識與草稿整理已改用 **OpenRouter**，不再讀取 `OPENAI_API_KEY` 或直連 OpenAI。已在 Supabase 以現有 `VITE_OPENROUTER_API_KEY` 成功驗證真實語音辨識及結構化輸出，未讀取或輸出金鑰值。`voice-draft` v3 與 migration `20260911142112` 已部署；`line-api` 保留 v4。前端由本批 main 提交發布至 Vercel。
+更新日期：2026-09-12。語音辨識與草稿整理已改用 **OpenRouter**，不再讀取 `OPENAI_API_KEY` 或直連 OpenAI。已在 Supabase 以現有 `VITE_OPENROUTER_API_KEY` 成功驗證真實語音辨識及結構化輸出，未讀取或輸出金鑰值。`voice-draft` v3 與 migration `20260911142112` 已部署；`line-api` 保留 v4。前端由本批 main 提交發布至 Vercel。
 
 ## OpenRouter 語音流程
 
@@ -19,6 +19,9 @@
 
 語音說明 → 系統整理 → 點擊草稿欄位修改 → 確認並建立活動。
 
+- 語音入口採「一句自然說明＋草稿補齊」：首要引導只要求「做什麼、什麼時候、在哪裡」，集合地點、名額、費用與攜帶物品收在可展開提示；系統不會在尚未完成擷取時假裝欄位已辨識。
+- 錄音回饋採「觸覺優先、聲音備援、視覺同步」：開始、停止、取消才觸發短震動；裝置不支援震動時播放低音量短提示音；介面一定同步切換按鈕、狀態文字與真實麥克風音量條。任一裝置能力失敗都不阻斷錄音流程。
+- 錄音開始後只自動將即時辨識框帶入可視區一次，不會因每段辨識結果反覆捲動畫面。取消錄音與取消整理皆有明確文字結果；動態效果遵守 `prefers-reduced-motion`。
 - 移除舊三步驟建立表單，改為語音入口與可編輯草稿。文字替代入口只在麥克風不支援／權限失敗時顯示。
 - 錄音最多 90 秒，剩 15 秒提示；取消、離頁或背景錄音時釋放麥克風。錄音僅在記憶體，失敗重試最長保留 5 分鐘，不寫入本專案資料庫、Storage 或 localStorage。
 - LINE ID token 由伺服器向 LINE 驗證後，才可使用語音整理、簽名圖片上傳與建立活動；不依前端 profile 或自行傳入的 user ID 授權。
@@ -34,7 +37,8 @@
 - `src/views/CreateView.vue`：流程、登入、草稿恢復與提交。
 - `src/components/create/voice/`：語音入口、草稿卡、欄位設定面板、地點搜尋／預覽。
 - `src/composables/useLiveActivityVoice.ts`：即時連線、分句文字、停止等待最後一句、取消／背景釋放麥克風。
-- `src/services/voicePcm.ts`、`public/voice-capture-worklet.js`：PCM 收音、重採樣與完整 WAV 分段。
+- `src/services/voicePcm.ts`、`public/voice-capture-worklet.js`：PCM 收音、音量回饋、重採樣與完整 WAV 分段。
+- `src/services/voiceFeedback.ts`：開始／停止／取消的短震動與無震動裝置提示音備援；沒有支援時安靜降級為純視覺回饋。
 - `src/composables/useActivityRecorder.ts`：不支援即時收音的備援錄音生命週期、取消及記憶體期限。
 - `src/composables/useVoiceActivityDraft.ts`：欄位狀態、確認規則、草稿快照。
 - `src/services/voiceDraftService.ts`：經身分驗證的語音 API；`activityImageService.ts`：圖片壓縮／簽名上傳。
@@ -48,16 +52,16 @@
 ## 已完成的驗證
 
 - `npm run typecheck` 通過。
-- `npm test`：15 個測試檔、78 項測試通過。
+- `npm test`：16 個測試檔、82 項測試通過；包含震動優先、聲音備援、純視覺降級、單一狀態播報、漸進式提示與即時音量狀態。
 - `npm run build` 通過；仍有既有單包超過 500KB 的提醒，路由分包留待效能階段。
 - Deno 實際入口與 WebSocket 單元測試：8 項通過，包括 OpenRouter 402、伺服器金鑰舊名稱相容、繁體中文、未登入禁止付費請求、最後一句、失敗退還及靜音／格式限制。
-- `scripts/qa-voice-create.mjs`：320／390／768／1280px 均無頁面或設定面板橫向溢出；欄位高至少 86px；可修改欄位，主操作可捲至導覽列上方點擊，麥克風入口在首屏可見。
-- `scripts/qa-voice-live.mjs`：320／390／768／1280px 均無橫向溢出；以合成語音檔走 Chromium 原生收音與 AudioWorklet，驗證錄音中顯示文字、停止後整理、關閉收音，沒有發布活動。LINE／WebSocket／整理回應為隔離測試資料，不是假裝正式辨識。
+- `scripts/qa-voice-create.mjs`：320／390／768／1280px 直向與 844×390px 橫向均無頁面、展開式說話提示或設定面板橫向溢出；欄位高至少 86px；可修改欄位，主操作可捲至導覽列上方點擊，直向裝置的麥克風入口在首屏可見。
+- `scripts/qa-voice-live.mjs`：320／390／768／1280px 直向與 844×390px 橫向均無橫向溢出；以合成語音檔走 Chromium 原生收音與 AudioWorklet，驗證音量條、錄音中可見的即時文字、停止後整理、關閉收音，沒有發布活動。LINE／WebSocket／整理回應為隔離測試資料，不是假裝正式辨識。
 - **另行真實 API 驗證**：使用非個人資訊的約 5 秒測試音檔，OpenRouter 成功辨識「明天下午三點到四點，在大安森林公園健走」，Gemini 以簡化 schema 成功輸出活動類型；兩段 API 合計約 5.4 秒。這不等同完整 LINE 手機端驗收。測試用臨時函式 `voice-provider-check` 已刪除，正式服務不依賴它。
 
 **雲端資料庫已驗證**：既有 `supabase/tests/voice_activity_security.sql` 安全檢查與本批 `supabase/tests/voice_quota.sql` 額度／跨午夜／ACL 檢查通過，測試交易均回滾。此次未建立、刪除或更動活動／報名。僅恢復 2026-09-11 單一測試者先前失敗消耗的 10 次 voice 額度。
 
-**尚未實機驗證**：實際 LINE／iOS／Android 麥克風與完整草稿流程、Google 地點實際選取、雲端圖片上傳與發布活動。金鑰 API 驗證成功不等於所有實機／網路環境都成功。
+**尚未實機驗證**：實際 LINE／iOS／Android 麥克風、震動／聲音回饋與完整草稿流程、Google 地點實際選取、雲端圖片上傳與發布活動。震動支援由瀏覽器與作業系統決定；不支援時會改用短提示音，再不支援則仍有視覺回饋。金鑰 API 驗證成功不等於所有實機／網路環境都成功。
 
 ## 部署紀錄
 

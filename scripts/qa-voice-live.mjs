@@ -15,9 +15,16 @@ await access(audioFile).catch(() => { throw new Error('Provide QA_AUDIO_FILE or 
 const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-audio-capture=' + audioFile] })
 const results = []
 const text = '明天下午三點到四點，在大安森林公園健走。'
+const viewports = [
+  { label: '320', width: 320, height: 844 },
+  { label: '390', width: 390, height: 844 },
+  { label: '768', width: 768, height: 844 },
+  { label: '1280', width: 1280, height: 844 },
+  { label: 'landscape-844', width: 844, height: 390 },
+]
 try {
-  for (const width of [320, 390, 768, 1280]) {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion: 'reduce', permissions: ['microphone'] })
+  for (const { label, width, height } of viewports) {
+    const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', permissions: ['microphone'] })
     const page = await context.newPage(), calls = []
     let segments = 0
     await page.routeWebSocket('**/functions/v1/voice-draft', ws => {
@@ -72,16 +79,18 @@ try {
     assert.deepEqual(calls, ['connect'], 'Partial text must appear before extraction')
     const layout = await page.getByLabel('語音辨識文字', { exact: true }).evaluate(el => {
       const rect = el.getBoundingClientRect()
-      return { noOverflow: document.documentElement.scrollWidth <= window.innerWidth, textVisible: el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)), bottom: rect.bottom }
+      const navigationRect = document.querySelector('.bottom-nav')?.getBoundingClientRect()
+      const navigationTop = navigationRect?.height ? navigationRect.top : window.innerHeight
+      return { noOverflow: document.documentElement.scrollWidth <= window.innerWidth, textVisible: el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)), textNotObscured: rect.bottom <= navigationTop, bottom: rect.bottom, navigationTop, scrollY: window.scrollY, maxScroll: document.documentElement.scrollHeight - window.innerHeight }
     })
-    assert.ok(layout.noOverflow && layout.textVisible, 'Live text must be visible at ' + width)
-    await page.screenshot({ path: out + '/recording-' + width + '.png' })
+    assert.ok(layout.noOverflow && layout.textVisible && layout.textNotObscured, 'Live text must be fully visible at ' + label + ': ' + JSON.stringify(layout))
+    await page.screenshot({ path: out + '/recording-' + label + '.png' })
     await page.getByRole('button', { name: '完成錄音，開始整理草稿' }).click()
     await page.getByRole('heading', { name: '確認你的活動草稿' }).waitFor()
     assert.deepEqual(calls, ['connect', 'extract'])
     assert.equal(await page.evaluate(() => window.__voiceQaTracks.every(track => track.readyState === 'ended')), true)
     assert.match(await page.locator('[data-field="park"]').textContent(), /待確認/)
-    results.push({ width, ...layout, realProvider: false, syntheticAudioCapture: true, liveTextVisible: true, segments, extractedAfterStop: true, microphoneClosed: true, noPublishedEvent: true })
+    results.push({ viewport: `${width}x${height}`, ...layout, realProvider: false, syntheticAudioCapture: true, liveTextVisible: true, segments, extractedAfterStop: true, microphoneClosed: true, noPublishedEvent: true })
     await context.close()
   }
   await writeFile(out + '/results.json', JSON.stringify(results, null, 2))

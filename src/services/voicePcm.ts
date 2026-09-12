@@ -23,26 +23,35 @@ export function createVoiceSegmenter(rate: number, onSegment: (wave: ArrayBuffer
     frames = tail.length ? [tail] : []; length = tail.length; silence = 0; voiced = false
   }
   function push(frame: Float32Array) {
-    if (!frame.length) return
+    if (!frame.length) return 0
     frames.push(frame); length += frame.length
     const energy = Math.sqrt(frame.reduce((sum, value) => sum + value * value, 0) / frame.length)
     if (energy >= 0.003) { voiced = true; silence = 0 } else silence += frame.length
     if (length >= rate * 4) flush(true)
     else if (length >= rate * 2 && silence >= rate * 0.64) flush()
+    return Math.min(1, energy * 12)
   }
   return { push, flush: () => flush() }
 }
 
-export async function captureVoicePcm(stream: MediaStream, onSegment: (wave: ArrayBuffer) => void, signal: AbortSignal) {
+interface VoicePcmCaptureOptions {
+  signal: AbortSignal
+  onSegment: (wave: ArrayBuffer) => void
+  onLevel?: (level: number) => void
+}
+
+export async function captureVoicePcm(stream: MediaStream, options: VoicePcmCaptureOptions) {
+  const { signal, onSegment, onLevel } = options
   const context = new AudioContext()
   let node: AudioWorkletNode | null = null, source: MediaStreamAudioSourceNode | null = null, gain: GainNode | null = null
   const segmenter = createVoiceSegmenter(context.sampleRate, onSegment)
-  let flushDone: (() => void) | null = null
+  let flushDone: (() => void) | null = null, lastLevelAt = 0
   function close() {
     if (node) { node.port.onmessage = null; node.disconnect() }
     source?.disconnect(); gain?.disconnect()
     void context.close().catch(() => {})
     signal.removeEventListener('abort', close)
+    onLevel?.(0)
     flushDone?.()
   }
   signal.addEventListener('abort', close, { once: true })
@@ -54,7 +63,10 @@ export async function captureVoicePcm(stream: MediaStream, onSegment: (wave: Arr
     node = new AudioWorkletNode(context, 'houban-voice-capture')
     gain = context.createGain(); gain.gain.value = 0
     node.port.onmessage = ({ data }) => {
-      if (data.type === 'samples' && data.audio instanceof Float32Array) segmenter.push(data.audio)
+      if (data.type === 'samples' && data.audio instanceof Float32Array) {
+        const level = segmenter.push(data.audio), now = performance.now()
+        if (now - lastLevelAt >= 80) { lastLevelAt = now; onLevel?.(level) }
+      }
       if (data.type === 'flushed') flushDone?.()
     }
     source.connect(node); node.connect(gain); gain.connect(context.destination)
