@@ -1,5 +1,6 @@
 import { computed, shallowRef } from 'vue'
 import { useAppState } from '@/composables/useAppState'
+import { hasValidExploreCoordinates } from '@/composables/useCurrentLocation'
 import type { DateFilter, EventItem } from '@/data/events'
 import type { ExploreFilters, ExploreScope } from '@/types/explore'
 import { matchesEventDate } from '@/utils/eventDateTime'
@@ -23,11 +24,6 @@ function computeHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lo
 }
 
 function matchesScope(event: EventItem, scope: ExploreScope) {
-  // 若尚未設定搜尋中心與座標，預設呈現推薦探索活動
-  if (!scope.location && !scope.selectedParkId && !scope.centerCoords) {
-    return true
-  }
-
   // 1. 若為選定特定公園名稱且精確符合，優先視為 0 公里直接符合
   if (scope.locationMode === 'park' && scope.selectedParkId) {
     if (event.park.id === scope.selectedParkId || event.park.name === scope.selectedParkId) {
@@ -48,13 +44,14 @@ function matchesScope(event: EventItem, scope: ExploreScope) {
     }
   }
 
-  // 3. 若為指定公園模式
+  // 3. 指定公園但缺少座標時，仍只接受精確的公園 ID／名稱；
+  //    不把活動的示意 distanceKm 當成使用者的實際距離。
   if (scope.locationMode === 'park' && scope.selectedParkId) {
     return event.park.id === scope.selectedParkId || event.park.name === scope.selectedParkId
   }
 
-  // 4. 回退至預設相對距離
-  return typeof event.distanceKm === 'number' && event.distanceKm <= scope.radius
+  // 4. 區域／目前位置沒有可信座標時，不顯示距離範圍結果。
+  return false
 }
 
 function formatCustomDate(value: string) {
@@ -70,6 +67,7 @@ export function useExploreDiscovery() {
     state,
     activityTypes,
     parks,
+    lastUsedScope,
     toggleFavorite,
     setDateFilter,
     setCustomDate,
@@ -85,7 +83,13 @@ export function useExploreDiscovery() {
     radius: state.radius,
     selectedParkId: state.selectedParkId,
     centerCoords: state.centerCoords,
+    locationSource: state.locationSource,
   }))
+
+  const hasValidScope = computed(() => Boolean(
+    appliedScope.value.location.trim()
+      && hasValidExploreCoordinates(appliedScope.value)
+  ))
 
   const appliedFilters = computed<ExploreFilters>(() => ({
     dateFilter: state.dateFilter,
@@ -93,7 +97,9 @@ export function useExploreDiscovery() {
     interest: state.interest,
   }))
 
-  const scopedEvents = computed(() => events.value.filter((event) => matchesScope(event, appliedScope.value)))
+  const scopedEvents = computed(() => hasValidScope.value
+    ? events.value.filter((event) => matchesScope(event, appliedScope.value))
+    : [])
 
   const recommendedEvents = computed(() => scopedEvents.value
     .filter((event) => matchesDate(event, 'today', null))
@@ -109,6 +115,7 @@ export function useExploreDiscovery() {
   const hasMoreResults = computed(() => visibleResults.value.length < filteredEvents.value.length)
 
   const scopeSummary = computed(() => {
+    if (!hasValidScope.value) return ''
     if (state.locationMode === 'park' && state.selectedParkId) {
       return parks.find((park) => park.id === state.selectedParkId)?.name ?? state.selectedParkId
     }
@@ -125,6 +132,7 @@ export function useExploreDiscovery() {
   const filterSummary = computed(() => `${dateLabel.value}・${state.interest === '全部' ? '全部興趣' : state.interest}`)
 
   function countForScope(scope: ExploreScope) {
+    if (!scope.location.trim() || !hasValidExploreCoordinates(scope)) return 0
     return events.value.filter((event) => {
       const dateMatch = matchesDate(event, state.dateFilter, state.customDate)
       const interestMatch = state.interest === '全部' || event.type === state.interest
@@ -160,7 +168,9 @@ export function useExploreDiscovery() {
     state,
     activityTypes,
     parks,
+    lastUsedScope,
     appliedScope,
+    hasValidScope,
     appliedFilters,
     scopeSummary,
     filterSummary,

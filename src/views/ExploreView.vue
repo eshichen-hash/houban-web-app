@@ -3,10 +3,12 @@ import { computed, nextTick, shallowRef, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import FilterPanel from '@/components/FilterPanel.vue'
 import ExploreHeader from '@/components/explore/ExploreHeader.vue'
+import ExploreLocationGate from '@/components/explore/ExploreLocationGate.vue'
 import ExploreResults from '@/components/explore/ExploreResults.vue'
 import LocationScopeSheet from '@/components/explore/LocationScopeSheet.vue'
 import RecommendationCarousel from '@/components/explore/RecommendationCarousel.vue'
 import { useExploreDiscovery } from '@/composables/useExploreDiscovery'
+import { hasValidExploreCoordinates, useCurrentLocation } from '@/composables/useCurrentLocation'
 import type { EventItem } from '@/data/events'
 import type { ExploreFilters, ExploreScope } from '@/types/explore'
 
@@ -14,7 +16,9 @@ const router = useRouter()
 const {
   state,
   parks,
+  lastUsedScope,
   appliedScope,
+  hasValidScope,
   scopeSummary,
   filterSummary,
   recommendedEvents,
@@ -28,6 +32,12 @@ const {
   showMoreResults,
   toggleFavorite,
 } = useExploreDiscovery()
+
+const {
+  isLocating,
+  errorMessage: locationError,
+  detect: detectCurrentLocation,
+} = useCurrentLocation()
 
 const scopeOpen = shallowRef(false)
 const filterOpen = shallowRef(false)
@@ -53,11 +63,35 @@ function previewScope(scope: ExploreScope) {
 }
 
 async function confirmScope(scope: ExploreScope) {
+  if (!scope.location.trim() || !hasValidExploreCoordinates(scope)) {
+    statusMessage.value = '請先取得有效位置或選擇有地圖座標的地點'
+    return
+  }
+
   applyScope(scope)
   scopeOpen.value = false
   statusMessage.value = `已更新活動範圍，共找到 ${filteredEvents.value.length} 場活動`
   await nextTick()
   results.value?.focusHeading()
+}
+
+async function useCurrentLocationFromGate() {
+  const resolved = await detectCurrentLocation(appliedScope.value.radius)
+  if (!resolved) {
+    statusMessage.value = locationError.value
+    return
+  }
+
+  applyScope(resolved)
+  statusMessage.value = `已取得${resolved.location}的目前位置，正在顯示附近活動`
+}
+
+function useLastLocation() {
+  const saved = lastUsedScope.value
+  if (!saved || !hasValidExploreCoordinates(saved)) return
+
+  applyScope({ ...saved, locationSource: 'last-used' })
+  statusMessage.value = `已沿用上次位置：${saved.location}`
 }
 
 function previewFilters(filters: ExploreFilters) {
@@ -107,37 +141,50 @@ function showNotificationStatus() {
       :scope-summary="scopeSummary"
       :radius="state.radius"
       :location-mode="state.locationMode"
+      :location-source="state.locationSource"
       @open-scope="openScopeSettings"
       @open-notifications="showNotificationStatus"
     />
 
     <main class="page-content explore-content">
-      <RecommendationCarousel
-        :events="recommendedEvents"
-        :favorites="state.favorites"
-        @open="openEvent"
-        @share="shareEvent"
-        @toggle-favorite="onFavorite"
+      <ExploreLocationGate
+        v-if="!hasValidScope"
+        :last-used-scope="lastUsedScope"
+        :is-locating="isLocating"
+        :error-message="locationError"
+        @use-current="useCurrentLocationFromGate"
+        @use-last-used="useLastLocation"
+        @choose-area="openScopeSettings"
       />
 
-      <FilterPanel
-        v-model:open="filterOpen"
-        :date-filter="state.dateFilter"
-        :interest="state.interest"
-        :custom-date="state.customDate"
-        :result-count="filterPreviewCount"
-        @preview="previewFilters"
-        @apply="confirmFilters"
-      />
+      <template v-else>
+        <RecommendationCarousel
+          :events="recommendedEvents"
+          :favorites="state.favorites"
+          @open="openEvent"
+          @share="shareEvent"
+          @toggle-favorite="onFavorite"
+        />
 
-      <ExploreResults
-        ref="results"
-        :events="visibleResults"
-        :total-count="filteredEvents.length"
-        :filter-summary="filterSummary"
-        :has-more="hasMoreResults"
-        @show-more="showMoreResults"
-      />
+        <FilterPanel
+          v-model:open="filterOpen"
+          :date-filter="state.dateFilter"
+          :interest="state.interest"
+          :custom-date="state.customDate"
+          :result-count="filterPreviewCount"
+          @preview="previewFilters"
+          @apply="confirmFilters"
+        />
+
+        <ExploreResults
+          ref="results"
+          :events="visibleResults"
+          :total-count="filteredEvents.length"
+          :filter-summary="filterSummary"
+          :has-more="hasMoreResults"
+          @show-more="showMoreResults"
+        />
+      </template>
     </main>
 
     <LocationScopeSheet

@@ -6,7 +6,8 @@ import { useExploreDiscovery } from '@/composables/useExploreDiscovery'
 
 const mockEvents = ref<EventItem[]>([])
 const mockState = reactive<ExploreScope & { dateFilter: DateFilter; interest: EventType | '全部'; customDate: string | null }>({
-  location: '', locationMode: 'current', radius: 3, selectedParkId: null, centerCoords: null,
+  location: '測試定位區域', locationMode: 'current', radius: 3, selectedParkId: null,
+  centerCoords: { lat: 24.1507, lng: 120.6632 }, locationSource: 'current',
   dateFilter: 'today', interest: '全部', customDate: null,
 })
 vi.mock('@/composables/useAppState', () => ({ useAppState: () => ({
@@ -16,7 +17,11 @@ vi.mock('@/composables/useAppState', () => ({ useAppState: () => ({
 
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-06T08:00:00+08:00'))
-  Object.assign(mockState, { location: '', locationMode: 'current', radius: 3, selectedParkId: null, centerCoords: null, dateFilter: 'today', interest: '全部', customDate: null })
+  Object.assign(mockState, {
+    location: '測試定位區域', locationMode: 'current', radius: 3, selectedParkId: null,
+    centerCoords: { lat: 24.1507, lng: 120.6632 }, locationSource: 'current',
+    dateFilter: 'today', interest: '全部', customDate: null,
+  })
   mockEvents.value = [
     { ...eventSeed[0], id: 'yesterday', isoDate: '2026-09-05', dateKey: 'today' },
     { ...eventSeed[0], id: 'today', isoDate: '2026-09-06', dateKey: 'tomorrow' },
@@ -51,5 +56,16 @@ describe('探索頁日期與範圍整合', () => {
       { ...eventSeed[0], id: 'nearby', isoDate: '2026-09-06', park: { ...eventSeed[0].park, lat: 25, lng: 121 } },
     ]
     expect(useExploreDiscovery().filteredEvents.value.map((event) => event.id)).toEqual(['nearby'])
+  })
+
+  it('尚未取得有效座標時，不顯示依距離推算的活動', () => {
+    Object.assign(mockState, {
+      location: '', locationMode: 'current', centerCoords: null, locationSource: null,
+    })
+
+    const discovery = useExploreDiscovery()
+    expect(discovery.hasValidScope.value).toBe(false)
+    expect(discovery.recommendedEvents.value).toEqual([])
+    expect(discovery.filteredEvents.value).toEqual([])
   })
 })

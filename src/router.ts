@@ -9,6 +9,7 @@ import CreateView from './views/CreateView.vue'
 import ManageView from './views/ManageView.vue'
 import MyView from './views/MyView.vue'
 import NotificationsView from './views/NotificationsView.vue'
+import LineMenuView from './views/LineMenuView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/manage', name: 'manage', component: ManageView, meta: { root: 'create' } },
     { path: '/my', name: 'my', component: MyView, meta: { root: 'my' } },
     { path: '/notifications', name: 'notifications', component: NotificationsView },
+    { path: '/line-menu', name: 'line-menu', component: LineMenuView, meta: { shell: 'line-menu', surface: 'line-menu' } },
     { path: '/:pathMatch(.*)*', redirect: '/explore' },
   ],
 })

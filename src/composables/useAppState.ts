@@ -8,10 +8,11 @@ import {
   removeFavoriteInSupabase,
 } from '@/services/registrationService'
 import { useLiff } from '@/services/liffService'
-import type { ExploreLocationMode, ExploreRadius, ExploreScope } from '@/types/explore'
+import type { ExploreLocationMode, ExploreLocationSource, ExploreRadius, ExploreScope } from '@/types/explore'
 import { eventDateKey, formatEventDate, matchesEventDate } from '@/utils/eventDateTime'
 
 const STORAGE_KEY = 'park-good-companion-vue-state'
+const LAST_SCOPE_KEY = 'park-good-companion-vue-last-scope'
 interface StoredState {
   favorites: string[]
   registered: string[]
@@ -24,6 +25,7 @@ interface StoredState {
   locationMode: ExploreLocationMode
   selectedParkId: string | null
   centerCoords?: { lat: number; lng: number } | null
+  locationSource?: ExploreLocationSource | null
 }
 
 const state = reactive({
@@ -32,6 +34,7 @@ const state = reactive({
   locationMode: 'current' as ExploreLocationMode,
   selectedParkId: null as string | null,
   centerCoords: null as { lat: number; lng: number } | null,
+  locationSource: null as ExploreLocationSource | null,
   dateFilter: 'today' as DateFilter,
   interest: '全部' as EventType | '全部',
   customDate: null as string | null,
@@ -42,6 +45,7 @@ const state = reactive({
 
 const cloudEvents = ref<EventItem[]>([])
 const isCloudLoaded = ref(false)
+const lastUsedScope = shallowRef<ExploreScope | null>(null)
 const { liffState } = useLiff()
 // Keep fallback counts reactive without changing the shared fixture data.
 const localSeedEvents = ref<EventItem[]>(eventSeed.map((event) => ({ ...event, park: { ...event.park } })))
@@ -75,25 +79,55 @@ function hydrateState() {
   if (typeof window === 'undefined') return
   try {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<StoredState> | null
-    if (!stored) return
-    if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
-    if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
-    if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
-    if (typeof stored.location === 'string' && stored.location.trim() && stored.location !== '大安區' && stored.location !== '目前位置') {
-      state.location = stored.location
-    } else {
-      state.location = ''
+    if (stored) {
+      if (stored.dateFilter === 'today' || stored.dateFilter === 'tomorrow' || stored.dateFilter === 'week' || stored.dateFilter === 'custom') state.dateFilter = stored.dateFilter
+      if (stored.interest === '全部' || activityTypes.includes(stored.interest as EventType)) state.interest = stored.interest as EventType | '全部'
+      if (typeof stored.customDate === 'string' || stored.customDate === null) state.customDate = stored.customDate
     }
-    if (stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10) state.radius = stored.radius
-    if (stored.locationMode === 'current' || stored.locationMode === 'district' || stored.locationMode === 'park') state.locationMode = stored.locationMode
-    if (typeof stored.selectedParkId === 'string' || stored.selectedParkId === null) state.selectedParkId = stored.selectedParkId
-    if (stored.centerCoords && typeof stored.centerCoords.lat === 'number' && typeof stored.centerCoords.lng === 'number') {
-      state.centerCoords = stored.centerCoords
-    } else {
-      state.centerCoords = null
+
+    // A persisted scope is a last-used choice, not proof of the user's current location.
+    // Keep it available as an explicit option instead of showing it as live GPS data.
+    const dedicatedLastScope = JSON.parse(window.localStorage.getItem(LAST_SCOPE_KEY) ?? 'null') as Partial<StoredState> | null
+    const storedScope = parseStoredScope(dedicatedLastScope ?? {})
+      ?? parseStoredScope(stored ?? {})
+    if (storedScope) {
+      lastUsedScope.value = { ...storedScope, locationSource: 'last-used' }
     }
   } catch {
-    // 本地資料損壞時回到乾淨的示意狀態，不阻擋使用者繼續操作。
+    // 本地資料損壞時回到乾淨狀態，不阻擋使用者重新取得位置。
+  }
+}
+
+function hasCoordinates(value: unknown): value is { lat: number; lng: number } {
+  if (!value || typeof value !== 'object') return false
+  const coords = value as { lat?: unknown; lng?: unknown }
+  return typeof coords.lat === 'number'
+    && Number.isFinite(coords.lat)
+    && typeof coords.lng === 'number'
+    && Number.isFinite(coords.lng)
+}
+
+function parseStoredScope(stored: Partial<StoredState>): ExploreScope | null {
+  if (typeof stored.location !== 'string' || !stored.location.trim()) return null
+  if (!hasCoordinates(stored.centerCoords)) return null
+
+  const locationMode = stored.locationMode === 'current'
+    || stored.locationMode === 'district'
+    || stored.locationMode === 'park'
+    ? stored.locationMode
+    : 'district'
+  const radius = stored.radius === 1 || stored.radius === 3 || stored.radius === 5 || stored.radius === 10
+    ? stored.radius
+    : 3
+  const selectedParkId = typeof stored.selectedParkId === 'string' ? stored.selectedParkId : null
+
+  return {
+    locationMode,
+    location: stored.location.trim(),
+    radius,
+    selectedParkId: locationMode === 'park' ? selectedParkId : null,
+    centerCoords: stored.centerCoords,
+    locationSource: 'last-used',
   }
 }
 
@@ -183,11 +217,28 @@ export function useAppState() {
   }
 
   function setExploreScope(scope: ExploreScope) {
-    state.locationMode = scope.locationMode
-    state.location = scope.location
+    const locationSource = scope.locationSource
+      ?? (scope.locationMode === 'current' ? 'current' : 'manual')
+    const nextScope: ExploreScope = {
+      ...scope,
+      location: scope.location.trim(),
+      centerCoords: scope.centerCoords ?? null,
+      locationSource,
+    }
+
+    state.locationMode = nextScope.locationMode
+    state.location = nextScope.location
     state.radius = scope.radius
-    state.selectedParkId = scope.locationMode === 'park' ? scope.selectedParkId : null
-    state.centerCoords = scope.centerCoords ?? null
+    state.selectedParkId = nextScope.locationMode === 'park' ? nextScope.selectedParkId : null
+    state.centerCoords = nextScope.centerCoords ?? null
+    state.locationSource = nextScope.locationSource ?? null
+
+    if (hasCoordinates(nextScope.centerCoords) && nextScope.location.trim()) {
+      lastUsedScope.value = { ...nextScope, locationSource: 'last-used' }
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(LAST_SCOPE_KEY, JSON.stringify(lastUsedScope.value))
+      }
+    }
   }
 
   /**
@@ -317,6 +368,7 @@ export function useAppState() {
     setCustomDate,
     setInterest,
     setExploreScope,
+    lastUsedScope: readonly(lastUsedScope),
     registerEvent,
     unregisterEvent,
     createEvent,
@@ -347,5 +399,6 @@ watch(state, (value) => {
     locationMode: value.locationMode,
     selectedParkId: value.selectedParkId,
     centerCoords: value.centerCoords,
+    locationSource: value.locationSource,
   }))
 }, { deep: true })

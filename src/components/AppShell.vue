@@ -7,6 +7,7 @@ import SideNav from './SideNav.vue'
 const route = useRoute()
 const isOnboarding = computed(() => route.meta.shell === 'onboarding')
 const root = computed(() => (route.meta.root as string | undefined) ?? 'explore')
+const surface = computed(() => (route.meta.surface as string | undefined) ?? root.value)
 const showPrimaryNavigation = computed(() => !isOnboarding.value && Boolean(route.meta.root))
 </script>
 
@@ -19,7 +20,7 @@ const showPrimaryNavigation = computed(() => !isOnboarding.value && Boolean(rout
     }"
   >
     <SideNav v-if="showPrimaryNavigation" :active="root" />
-    <div class="app-surface" :class="`surface-${root}`">
+    <div class="app-surface" :class="`surface-${surface}`">
       <slot />
       <BottomNav v-if="showPrimaryNavigation" :active="root" />
     </div>

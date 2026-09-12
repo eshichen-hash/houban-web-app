@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686" role="img" aria-labelledby="title desc">
+  <title id="title">公園好伴 LINE 圖文選單</title>
+  <desc id="desc">找活動、我的行程、發起活動、活動通知四個入口。</desc>
+
+  <!-- 公園好伴既有 UI 色票：primary / success-strong / sun / wordmark -->
+  <!-- 參照 LINE 大版 2500 × 1686：A 約 49%，下排 B/C/D 約 51%。 -->
+  <rect width="2500" height="820" fill="#214c69" />
+  <rect y="820" width="833.33" height="866" fill="#486f52" />
+  <rect x="833.33" y="820" width="833.34" height="866" fill="#e8892b" />
+  <rect x="1666.67" y="820" width="833.33" height="866" fill="#315b5d" />
+
+  <!-- 保留既有 surface 色作區隔線，讓 LINE action 區域清楚可辨。 -->
+  <path d="M0 820h2500M833.33 820v866M1666.67 820v866" fill="none" stroke="#fffdf8" stroke-width="12" />
+
+  <g fill="none" stroke="#fffdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(900 316) scale(7.9166667)">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </g>
+  </g>
+  <text x="1390" y="430" fill="#fffdf8" font-family="Noto Sans TC, PingFang TC, Microsoft JhengHei, sans-serif" font-size="104" font-weight="900" text-anchor="middle">找活動</text>
+  <text x="1390" y="522" fill="#fffdf8" fill-opacity=".86" font-family="Noto Sans TC, PingFang TC, Microsoft JhengHei, sans-serif" font-size="48" font-weight="700" text-anchor="middle">探索附近適合的活動</text>
+
+  <g fill="none" stroke="#fffdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(326 1050) scale(7.5)">
+      <path d="M8 2v4M16 2v4" />
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" />
+    </g>
+    <g transform="translate(1993 1050) scale(7.5)">
+      <path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+    </g>
+  </g>
+  <g fill="none" stroke="#20343b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(1160 1050) scale(7.5)">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8M12 8v8" />
+    </g>
+  </g>
+
+  <g font-family="Noto Sans TC, PingFang TC, Microsoft JhengHei, sans-serif" text-anchor="middle">
+    <text x="416.67" y="1340" fill="#fffdf8" font-size="62" font-weight="900">我的行程</text>
+    <text x="416.67" y="1412" fill="#fffdf8" fill-opacity=".86" font-size="34" font-weight="700">查看已報名與收藏</text>
+    <text x="1250" y="1340" fill="#20343b" font-size="62" font-weight="900">發起活動</text>
+    <text x="1250" y="1412" fill="#20343b" fill-opacity=".78" font-size="34" font-weight="700">邀請鄰里一起出門</text>
+    <text x="2083.33" y="1340" fill="#fffdf8" font-size="62" font-weight="900">活動通知</text>
+    <text x="2083.33" y="1412" fill="#fffdf8" fill-opacity=".86" font-size="34" font-weight="700">掌握時間與集合提醒</text>
+  </g>
+</svg>

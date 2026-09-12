@@ -58,6 +58,8 @@ npm run build
 - `/manage`：目前 LINE 使用者實際發起的活動與名單管理。
 - `/my`：行程與收藏。
 - `/notifications`：通知介面（尚需串接正式通知來源）。
+- `/line-menu`：LINE 官方帳號聊天頁面與圖文選單配置預覽；目前採用大版 `2500 × 1686 px` 的 4 格入口配置。
+- `public/line-menu-large.png`：可直接上傳的 4 格大版圖檔；`public/line-menu-large.svg` 為同尺寸向量母版。
 
 ## 程式責任
 

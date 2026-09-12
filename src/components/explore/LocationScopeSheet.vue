@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Loader2, LocateFixed, MapPin, Search, Sparkles, X } f
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { SelectedParkResult } from '@/components/ParkAutocomplete.vue'
 import type { Park } from '@/data/events'
+import { hasValidExploreCoordinates, useCurrentLocation } from '@/composables/useCurrentLocation'
 import {
   findLocalPlaceSuggestions,
   mergePlaceSuggestions,
@@ -29,14 +30,20 @@ const panel = useTemplateRef<HTMLElement>('panel')
 const overlayInputRef = useTemplateRef<HTMLInputElement>('overlayInputRef')
 const radiusOptions: ExploreRadius[] = [1, 3, 5, 10]
 const draft = reactive<ExploreScope>({ ...props.scope })
-const canApply = computed(() => true)
+const canApply = computed(() => Boolean(
+  draft.location.trim() && hasValidExploreCoordinates(draft),
+))
 
 let previousFocus: HTMLElement | null = null
 let previousBodyOverflow = ''
 
 const selectedParkData = ref<SelectedParkResult | null>(null)
-const isLocating = ref(false)
-const userGpsCityDistrict = ref(props.scope.location && props.scope.location !== '目前位置' && props.scope.location !== '大安區' ? props.scope.location : '台中市西區')
+const {
+  isLocating,
+  errorMessage: locationError,
+  detect: resolveCurrentLocation,
+  reset: resetLocationStatus,
+} = useCurrentLocation()
 
 // 專屬全螢幕搜尋視圖狀態
 const isDedicatedSearchOpen = ref(false)
@@ -53,9 +60,6 @@ let activeSearchId = 0
 
 function syncDraft() {
   Object.assign(draft, props.scope)
-  if (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' && draft.locationMode === 'current') {
-    userGpsCityDistrict.value = draft.location
-  }
   if (draft.selectedParkId) {
     const existing = props.parks.find((p) => p.id === draft.selectedParkId || p.name === draft.selectedParkId)
     if (existing) {
@@ -247,98 +251,43 @@ function closeDedicatedSearch() {
   isSearchingPlaces.value = false
 }
 
-function selectGpsAndClose() {
-  useCurrentLocation()
+async function selectGpsAndClose() {
+  const resolved = await resolveCurrentLocation(draft.radius)
+  if (!resolved) return
+
+  Object.assign(draft, resolved)
+  selectedParkData.value = null
   closeDedicatedSearch()
 }
 
-async function detectCurrentLocation() {
-  if (!navigator.geolocation) {
-    if (!draft.location || draft.location === '大安區') draft.location = '目前位置'
-    return
-  }
+async function selectCurrentLocation() {
+  const resolved = await resolveCurrentLocation(draft.radius)
+  if (!resolved) return
 
-  isLocating.value = true
-
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      const lat = position.coords.latitude
-      const lng = position.coords.longitude
-
-      let foundDistrict = ''
-
-      if (window.google?.maps?.Geocoder) {
-        try {
-          const geocoder = new window.google.maps.Geocoder()
-          const response = await geocoder.geocode({ location: { lat, lng } })
-          if (response?.results?.[0]?.address_components) {
-            const comps = response.results[0].address_components
-            const cityComp = comps.find((c: any) => c.types.includes('administrative_area_level_1'))
-            const subComp = comps.find((c: any) =>
-              c.types.includes('sublocality_level_1') || c.types.includes('administrative_area_level_3')
-            )
-            const city = cityComp ? cityComp.long_name : ''
-            const sub = subComp ? subComp.long_name : ''
-            foundDistrict = (city + sub) || sub || city
-          }
-        } catch (err) {
-          console.warn('Google Geocoder 反向編碼失敗:', err)
-        }
-      }
-
-      if (!foundDistrict) {
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`)
-          const data = await res.json()
-          if (data?.address) {
-            const city = data.address.city || data.address.county || ''
-            const sub = data.address.suburb || data.address.district || data.address.city_district || data.address.town || ''
-            foundDistrict = (city + sub) || sub || city || '目前位置'
-          }
-        } catch {
-          foundDistrict = '目前位置'
-        }
-      }
-
-      if (foundDistrict && foundDistrict !== '目前位置') {
-        userGpsCityDistrict.value = foundDistrict
-      }
-      draft.location = foundDistrict || '目前位置'
-      draft.locationMode = 'current'
-      draft.selectedParkId = null
-      draft.centerCoords = { lat, lng }
-      selectedParkData.value = null
-      isLocating.value = false
-    },
-    (error) => {
-      console.warn('瀏覽器 GPS 定位失敗:', error)
-      isLocating.value = false
-      if (!draft.location || draft.location === '大安區') draft.location = '目前位置'
-      draft.locationMode = 'current'
-      draft.selectedParkId = null
-      selectedParkData.value = null
-    },
-    { enableHighAccuracy: true, timeout: 7000 }
-  )
-}
-
-function useCurrentLocation() {
-  detectCurrentLocation()
+  Object.assign(draft, resolved)
+  selectedParkData.value = null
 }
 
 function clearSelectedGooglePark() {
   draft.selectedParkId = null
   selectedParkData.value = null
   draft.locationMode = 'current'
+  draft.location = ''
+  draft.centerCoords = null
+  draft.locationSource = null
 }
 
 function handleGoogleParkSelect(result: SelectedParkResult) {
+  resetLocationStatus()
   selectedParkData.value = result
   draft.locationMode = 'park'
+  draft.locationSource = 'manual'
   draft.selectedParkId = result.name
   draft.location = result.district || result.name
   if (typeof result.lat === 'number' && typeof result.lng === 'number') {
     draft.centerCoords = { lat: result.lat, lng: result.lng }
+  } else {
+    draft.centerCoords = null
   }
 }
 
@@ -442,7 +391,7 @@ onBeforeUnmount(() => {
             <div v-if="draft.locationMode === 'park' && (selectedParkData || draft.selectedParkId)" class="scope-search-block">
               <div class="selected-google-park-card">
                 <div class="selected-google-park-card__header">
-                  <span class="tag tag--success">✓ 已指定地點</span>
+                <span class="tag tag--success">✓ 已選搜尋中心</span>
                   <button class="btn-re-search" type="button" @click="openDedicatedSearch">
                     <Search :size="14" aria-hidden="true" />
                     <span>更換地點</span>
@@ -460,14 +409,14 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <button class="btn-gps-shortcut" type="button" @click="useCurrentLocation">
+              <button class="btn-gps-shortcut" type="button" :disabled="isLocating" @click="selectCurrentLocation">
                 <LocateFixed :size="16" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
-                <span>{{ isLocating ? '正在取得 GPS 定位...' : `切換回我目前的 GPS 位置（${userGpsCityDistrict || '目前位置'}）` }}</span>
+                <span>{{ isLocating ? '正在取得 GPS 定位...' : '改用我目前的 GPS 位置' }}</span>
               </button>
             </div>
 
             <!-- B. 已定位 GPS 位置模式 -->
-            <div v-else-if="draft.location && draft.location !== '目前位置' && draft.location !== '大安區'" class="scope-search-block">
+            <div v-else-if="draft.location && hasValidExploreCoordinates(draft)" class="scope-search-block">
               <div class="current-gps-location-card">
                 <div class="current-gps-icon">
                   <LocateFixed :size="22" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
@@ -475,7 +424,7 @@ onBeforeUnmount(() => {
                 <div class="current-gps-text">
                   <div class="current-gps-tag-row">
                     <span class="tag">📍 目前 GPS 位置</span>
-                    <button class="btn-re-locate" type="button" :disabled="isLocating" @click="detectCurrentLocation">
+                    <button class="btn-re-locate" type="button" :disabled="isLocating" @click="selectCurrentLocation">
                       {{ isLocating ? '定位中...' : '重新定位' }}
                     </button>
                   </div>
@@ -510,7 +459,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="scope-empty-guidance-actions">
-                <button class="button button--primary button--full" type="button" @click="useCurrentLocation">
+                <button class="button button--primary button--full" type="button" :disabled="isLocating" @click="selectCurrentLocation">
                   <LocateFixed :size="18" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
                   <span>{{ isLocating ? '正在取得 GPS 定位...' : '使用我目前的 GPS 即時位置' }}</span>
                 </button>
@@ -529,6 +478,11 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </fieldset>
+
+          <p v-if="locationError" class="scope-location-error" role="alert">
+            <MapPin :size="18" aria-hidden="true" />
+            <span>{{ locationError }}</span>
+          </p>
 
           <!-- 2. 活動搜尋範圍 -->
           <fieldset class="scope-sheet__group">
@@ -587,13 +541,13 @@ onBeforeUnmount(() => {
 
         <!-- 快速定位動作列 -->
         <div class="search-overlay-shortcuts">
-          <button class="search-overlay-gps-btn" type="button" @click="selectGpsAndClose">
+            <button class="search-overlay-gps-btn" type="button" :disabled="isLocating" @click="selectGpsAndClose">
             <div class="search-overlay-gps-icon">
               <LocateFixed :size="18" :class="{ 'animate-spin': isLocating }" aria-hidden="true" />
             </div>
             <div class="search-overlay-gps-text">
               <strong>使用我目前的 GPS 位置</strong>
-              <small>{{ isLocating ? '正在取得 GPS 定位...' : (draft.location && draft.location !== '目前位置' && draft.location !== '大安區' ? `已定位：${draft.location}` : '點擊取得當前所在位置') }}</small>
+              <small>{{ isLocating ? '正在取得 GPS 定位...' : '只會使用這次取得的實際座標' }}</small>
             </div>
           </button>
         </div>
